@@ -9,14 +9,61 @@ class AppPolicyRepository(private val database: FlowDatabase) {
 
     suspend fun getAll(): List<AppPolicy> = dao.getAll().map { it.toDomain() }
 
+    suspend fun get(packageName: String): AppPolicy? = dao.get(packageName)?.toDomain()
+
     suspend fun setBlocked(packageName: String, blocked: Boolean) {
-        val current = dao.get(packageName)
-        dao.upsert(
-            (current ?: AppPolicyEntity(packageName = packageName)).copy(
-                blocked = blocked,
-                updatedAt = System.currentTimeMillis()
+        update(packageName) { copy(blocked = blocked) }
+    }
+
+    suspend fun setSpeedLimits(
+        packageName: String,
+        downloadBytesPerSecond: Long,
+        uploadBytesPerSecond: Long
+    ) {
+        update(packageName) {
+            copy(
+                downloadLimitBytesPerSecond = downloadBytesPerSecond.coerceAtLeast(0L),
+                uploadLimitBytesPerSecond = uploadBytesPerSecond.coerceAtLeast(0L)
             )
-        )
+        }
+    }
+
+    suspend fun setQuotas(
+        packageName: String,
+        dailyBytes: Long,
+        monthlyBytes: Long
+    ) {
+        update(packageName) {
+            copy(
+                dailyQuotaBytes = dailyBytes.coerceAtLeast(0L),
+                monthlyQuotaBytes = monthlyBytes.coerceAtLeast(0L)
+            )
+        }
+    }
+
+    suspend fun setSchedule(
+        packageName: String,
+        enabled: Boolean,
+        startMinutes: Int,
+        endMinutes: Int
+    ) {
+        update(packageName) {
+            copy(
+                scheduleEnabled = enabled,
+                scheduleStartMinutes = startMinutes.coerceIn(0, 1439),
+                scheduleEndMinutes = endMinutes.coerceIn(0, 1439)
+            )
+        }
+    }
+
+    suspend fun delete(packageName: String) = dao.delete(packageName)
+
+    private suspend fun update(
+        packageName: String,
+        transform: AppPolicyEntity.() -> AppPolicyEntity
+    ) {
+        val current = dao.get(packageName) ?: AppPolicyEntity(packageName = packageName)
+        dao.upsert(transform(current).copy(updatedAt = System.currentTimeMillis()))
     }
 
     private fun AppPolicyEntity.toDomain() = AppPolicy(
