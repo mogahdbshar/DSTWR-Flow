@@ -3,6 +3,7 @@ package com.dstwr.flow.data.apps
 import com.dstwr.flow.data.local.AppPolicyEntity
 import com.dstwr.flow.data.local.FlowDatabase
 import com.dstwr.flow.domain.model.AppPolicy
+import com.dstwr.flow.domain.model.NetworkScope
 
 class AppPolicyRepository(private val database: FlowDatabase) {
     private val dao = database.appPolicyDao()
@@ -56,6 +57,10 @@ class AppPolicyRepository(private val database: FlowDatabase) {
         }
     }
 
+    suspend fun setNetworkScope(packageName: String, scope: NetworkScope) {
+        update(packageName) { copy(networkScope = scope) }
+    }
+
     suspend fun delete(packageName: String) = dao.delete(packageName)
 
     private suspend fun update(
@@ -75,6 +80,10 @@ class AppPolicyRepository(private val database: FlowDatabase) {
         monthlyQuotaBytes = monthlyQuotaBytes,
         scheduleEnabled = scheduleEnabled,
         scheduleStartMinutes = scheduleStartMinutes,
-        scheduleEndMinutes = scheduleEndMinutes
+        scheduleEndMinutes = scheduleEndMinutes,
+        networkScope = runCatching { NetworkScope.valueOf(networkScope) }.getOrDefault(NetworkScope.ALL)
     )
+
+    private fun AppPolicyEntity.copy(networkScope: NetworkScope): AppPolicyEntity =
+        copy(networkScope = networkScope.name)
 }
