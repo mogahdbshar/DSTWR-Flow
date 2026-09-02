@@ -25,12 +25,7 @@ class AppPolicyRuntimeCoordinator(
             usage = policyUsage,
             emergencyBlock = emergencyBlock
         )
-        return RuntimeDecision(
-            packageName = packageName,
-            uid = uid,
-            decision = decision,
-            usage = policyUsage
-        )
+        return RuntimeDecision(packageName, uid, decision, policyUsage)
     }
 
     suspend fun evaluateAll(
