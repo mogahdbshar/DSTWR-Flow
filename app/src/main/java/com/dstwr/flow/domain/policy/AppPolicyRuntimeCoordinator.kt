@@ -2,12 +2,8 @@ package com.dstwr.flow.domain.policy
 
 import com.dstwr.flow.data.apps.AppPolicyRepository
 import com.dstwr.flow.data.usage.UsageWindowRepository
-import com.dstwr.flow.domain.model.AppPolicy
 
-/**
- * Coordinates persisted policies, current time and Android usage counters.
- * Android-specific data access stays outside the pure decision engine.
- */
+/** Coordinates persisted policies, current time and Android usage counters. */
 class AppPolicyRuntimeCoordinator(
     private val policyRepository: AppPolicyRepository,
     private val usageWindowRepository: UsageWindowRepository,
@@ -20,21 +16,20 @@ class AppPolicyRuntimeCoordinator(
         nowMillis: Long = System.currentTimeMillis()
     ): RuntimeDecision {
         val policy = policyRepository.get(packageName)
-        val time = PolicyTimeWindowFactory.fromMillis(nowMillis)
+        val time = PolicyTime.fromMillis(nowMillis)
         val usage = usageWindowRepository.queryCurrentWindows(uid, nowMillis)
+        val policyUsage = PolicyUsage.from(usage.daily, usage.monthly)
         val decision = evaluator.evaluate(
             policy = policy,
             minuteOfDay = time.minuteOfDay,
-            dailyUsageBytes = usage.daily.totalBytes,
-            monthlyUsageBytes = usage.monthly.totalBytes,
+            usage = policyUsage,
             emergencyBlock = emergencyBlock
         )
         return RuntimeDecision(
             packageName = packageName,
             uid = uid,
             decision = decision,
-            dailyUsageBytes = usage.daily.totalBytes,
-            monthlyUsageBytes = usage.monthly.totalBytes
+            usage = policyUsage
         )
     }
 
@@ -56,6 +51,5 @@ data class RuntimeDecision(
     val packageName: String,
     val uid: Int,
     val decision: AppPolicyEvaluator.Decision,
-    val dailyUsageBytes: Long,
-    val monthlyUsageBytes: Long
+    val usage: PolicyUsage
 )
