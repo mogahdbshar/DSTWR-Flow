@@ -51,23 +51,28 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.dstwr.flow.domain.util.DataFormatter
 import com.dstwr.flow.ui.apps.AppRow
 import com.dstwr.flow.ui.apps.AppsViewModel
+import com.dstwr.flow.ui.stats.AppUsageRow
+import com.dstwr.flow.ui.stats.UsageSummary
+import com.dstwr.flow.ui.stats.UsageViewModel
 import com.dstwr.flow.ui.theme.DSTWRFlowTheme
 
 class MainActivity : ComponentActivity() {
     private val appsViewModel: AppsViewModel by viewModels()
+    private val usageViewModel: UsageViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -77,7 +82,8 @@ class MainActivity : ComponentActivity() {
                     usageAccessGranted = hasUsageAccess(),
                     onOpenUsageAccess = { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) },
                     onRequestVpn = { requestVpnPermission() },
-                    appsViewModel = appsViewModel
+                    appsViewModel = appsViewModel,
+                    usageViewModel = usageViewModel
                 )
             }
         }
@@ -86,6 +92,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         appsViewModel.refresh()
+        usageViewModel.refresh()
     }
 
     private fun hasUsageAccess(): Boolean {
@@ -110,7 +117,8 @@ private fun FlowApp(
     usageAccessGranted: Boolean,
     onOpenUsageAccess: () -> Unit,
     onRequestVpn: () -> Unit,
-    appsViewModel: AppsViewModel
+    appsViewModel: AppsViewModel,
+    usageViewModel: UsageViewModel
 ) {
     var tab by remember { mutableIntStateOf(0) }
     var protection by remember { mutableStateOf(false) }
@@ -143,15 +151,19 @@ private fun FlowApp(
                 protection = protection,
                 emergency = emergencyBlock,
                 usageGranted = usageAccessGranted,
+                today = usageViewModel.today.collectAsState().value,
+                month = usageViewModel.month.collectAsState().value,
                 onProtection = { protection = it; if (it) onRequestVpn() },
                 onEmergency = { emergencyBlock = it },
                 onUsage = onOpenUsageAccess
             )
-            1 -> AppsScreen(
+            1 -> AppsScreen(Modifier.padding(padding), appsViewModel)
+            2 -> StatsScreen(
                 modifier = Modifier.padding(padding),
-                viewModel = appsViewModel
+                usageGranted = usageAccessGranted,
+                viewModel = usageViewModel,
+                onUsage = onOpenUsageAccess
             )
-            2 -> Section(Modifier.padding(padding), "الإحصائيات", "ستظهر هنا بيانات NetworkStatsManager وسجل Room اليومي والأسبوعي والشهري.")
             else -> Section(Modifier.padding(padding), "المزيد", "الإعدادات واللغة والإشعارات والخصوصية والأذونات ومعلومات التطبيق.")
         }
     }
@@ -173,12 +185,7 @@ private fun FlowTopBar() {
                 shape = MaterialTheme.shapes.medium,
                 color = MaterialTheme.colorScheme.primary.copy(alpha = .12f)
             ) {
-                Icon(
-                    Icons.Default.Shield,
-                    contentDescription = null,
-                    modifier = Modifier.padding(9.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
+                Icon(Icons.Default.Shield, contentDescription = null, modifier = Modifier.padding(9.dp), tint = MaterialTheme.colorScheme.primary)
             }
         },
         actions = {
@@ -189,13 +196,9 @@ private fun FlowTopBar() {
 }
 
 @Composable
-private fun AppsScreen(
-    modifier: Modifier,
-    viewModel: AppsViewModel
-) {
+private fun AppsScreen(modifier: Modifier, viewModel: AppsViewModel) {
     val apps by viewModel.apps.collectAsState()
     val loading by viewModel.loading.collectAsState()
-
     LazyColumn(
         modifier = modifier.fillMaxSize().padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -205,16 +208,8 @@ private fun AppsScreen(
             GlassCard(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = .10f)) {
                 Column(Modifier.padding(18.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            shape = MaterialTheme.shapes.large,
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = .16f)
-                        ) {
-                            Icon(
-                                Icons.Default.Apps,
-                                contentDescription = null,
-                                modifier = Modifier.padding(12.dp).size(28.dp),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
+                        Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.primary.copy(alpha = .16f)) {
+                            Icon(Icons.Default.Apps, contentDescription = null, modifier = Modifier.padding(12.dp).size(28.dp), tint = MaterialTheme.colorScheme.primary)
                         }
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
@@ -223,60 +218,34 @@ private fun AppsScreen(
                         }
                     }
                     Spacer(Modifier.height(10.dp))
-                    Text(
-                        "هذه القائمة تقرأ التطبيقات التي تظهر في مشغل الجهاز، وتخزن سياسة الحظر محليًا. الحظر الفعلي سيُربط بمحرك الشبكة في المرحلة التالية.",
-                        style = MaterialTheme.typography.bodySmall
-                    )
+                    Text("هذه القائمة تقرأ التطبيقات التي تظهر في مشغل الجهاز، وتخزن سياسة الحظر محليًا. الحظر الفعلي سيُربط بمحرك الشبكة في المرحلة التالية.", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
-        if (loading) {
-            item {
-                GlassCard {
-                    Text("جارٍ تحديث قائمة التطبيقات...", modifier = Modifier.padding(18.dp))
-                }
-            }
-        }
-        if (!loading && apps.isEmpty()) {
-            item {
-                GlassCard {
-                    Column(Modifier.padding(18.dp)) {
-                        Text("لم يتم العثور على تطبيقات قابلة للتشغيل.")
-                        Spacer(Modifier.height(10.dp))
-                        OutlinedButton(onClick = viewModel::refresh) {
-                            Text("تحديث")
-                        }
-                    }
+        if (loading) item { GlassCard { Text("جارٍ تحديث قائمة التطبيقات...", modifier = Modifier.padding(18.dp)) } }
+        if (!loading && apps.isEmpty()) item {
+            GlassCard {
+                Column(Modifier.padding(18.dp)) {
+                    Text("لم يتم العثور على تطبيقات قابلة للتشغيل.")
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedButton(onClick = viewModel::refresh) { Text("تحديث") }
                 }
             }
         }
         items(apps, key = { it.app.packageName }) { row ->
-            AppPolicyCard(
-                row = row,
-                onBlockedChange = { viewModel.setBlocked(row.app.packageName, it) }
-            )
+            AppPolicyCard(row) { viewModel.setBlocked(row.app.packageName, it) }
         }
     }
 }
 
 @Composable
-private fun AppPolicyCard(
-    row: AppRow,
-    onBlockedChange: (Boolean) -> Unit
-) {
+private fun AppPolicyCard(row: AppRow, onBlockedChange: (Boolean) -> Unit) {
     GlassCard {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Surface(
                 modifier = Modifier.size(46.dp),
                 shape = MaterialTheme.shapes.medium,
-                color = if (row.blocked) {
-                    MaterialTheme.colorScheme.error.copy(alpha = .12f)
-                } else {
-                    MaterialTheme.colorScheme.primary.copy(alpha = .10f)
-                }
+                color = if (row.blocked) MaterialTheme.colorScheme.error.copy(alpha = .12f) else MaterialTheme.colorScheme.primary.copy(alpha = .10f)
             ) {
                 Icon(
                     if (row.blocked) Icons.Default.Block else Icons.Default.Apps,
@@ -288,11 +257,9 @@ private fun AppPolicyCard(
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(row.app.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text(
-                    if (row.app.systemApp) "تطبيق نظام" else "تطبيق مستخدم",
-                    style = MaterialTheme.typography.labelSmall
-                )
+                Text(if (row.app.systemApp) "تطبيق نظام" else "تطبيق مستخدم", style = MaterialTheme.typography.labelSmall)
                 Text(row.app.packageName, style = MaterialTheme.typography.labelSmall)
+                Text("اليوم: ${DataFormatter.bytes(row.usage.totalBytes)}  |  Wi-Fi: ${DataFormatter.bytes(row.usage.wifiBytes)}  |  جوال: ${DataFormatter.bytes(row.usage.mobileBytes)}", style = MaterialTheme.typography.labelSmall)
             }
             Switch(checked = row.blocked, onCheckedChange = onBlockedChange)
         }
@@ -305,6 +272,8 @@ private fun Dashboard(
     protection: Boolean,
     emergency: Boolean,
     usageGranted: Boolean,
+    today: UsageSummary,
+    month: UsageSummary,
     onProtection: (Boolean) -> Unit,
     onEmergency: (Boolean) -> Unit,
     onUsage: () -> Unit
@@ -318,16 +287,8 @@ private fun Dashboard(
             GlassCard(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = .10f)) {
                 Column(Modifier.padding(20.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            shape = MaterialTheme.shapes.large,
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = .16f)
-                        ) {
-                            Icon(
-                                Icons.Default.Shield,
-                                contentDescription = null,
-                                modifier = Modifier.padding(12.dp).size(28.dp),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
+                        Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.primary.copy(alpha = .16f)) {
+                            Icon(Icons.Default.Shield, contentDescription = null, modifier = Modifier.padding(12.dp).size(28.dp), tint = MaterialTheme.colorScheme.primary)
                         }
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
@@ -337,27 +298,31 @@ private fun Dashboard(
                         Switch(checked = protection, onCheckedChange = onProtection)
                     }
                     Spacer(Modifier.height(12.dp))
-                    Text(
-                        "محرك التحكم سيعمل محليًا عبر VpnService بعد موافقة المستخدم، دون خادم VPN خارجي.",
-                        style = MaterialTheme.typography.bodySmall
-                    )
+                    Text("محرك التحكم سيعمل محليًا عبر VpnService بعد موافقة المستخدم، دون خادم VPN خارجي.", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Metric("اليوم", "0 B", Modifier.weight(1f))
-                Metric("هذا الشهر", "0 B", Modifier.weight(1f))
+                Metric("اليوم", DataFormatter.bytes(today.total.totalBytes), Modifier.weight(1f))
+                Metric("هذا الشهر", DataFormatter.bytes(month.total.totalBytes), Modifier.weight(1f))
+            }
+        }
+        item {
+            GlassCard {
+                Column(Modifier.padding(18.dp)) {
+                    Text("توزيع اليوم", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(10.dp))
+                    Text("Wi-Fi: ${DataFormatter.bytes(today.wifi)}")
+                    Text("بيانات الجوال: ${DataFormatter.bytes(today.mobile)}")
+                    Text("التطبيقات النشطة: ${today.appCount}")
+                }
             }
         }
         item {
             GlassCard {
                 Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.Block,
-                        contentDescription = null,
-                        tint = if (emergency) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                    )
+                    Icon(Icons.Default.Block, contentDescription = null, tint = if (emergency) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text("قاطع الإنترنت", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -375,34 +340,99 @@ private fun Dashboard(
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
                             Text("إحصائيات الاستخدام", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                            Text(
-                                if (usageGranted) "الصلاحية متاحة" else "مطلوبة لقراءة استهلاك التطبيقات",
-                                style = MaterialTheme.typography.bodySmall
-                            )
+                            Text(if (usageGranted) "تمت قراءة بيانات الجهاز" else "مطلوبة لقراءة استهلاك التطبيقات", style = MaterialTheme.typography.bodySmall)
                         }
                     }
                     if (!usageGranted) {
                         Spacer(Modifier.height(12.dp))
-                        OutlinedButton(onClick = onUsage, modifier = Modifier.fillMaxWidth()) {
-                            Text("فتح إعدادات الصلاحية")
-                        }
+                        OutlinedButton(onClick = onUsage, modifier = Modifier.fillMaxWidth()) { Text("فتح إعدادات الصلاحية") }
                     }
                 }
             }
         }
         item { Text("أدوات التحكم", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+        item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Action("التطبيقات", "إدارة الاتصال", Icons.Default.Apps, Modifier.weight(1f))
+            Action("السرعة", "حدود التحميل", Icons.Default.Speed, Modifier.weight(1f))
+        } }
+        item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Action("الحصص", "حدود البيانات", Icons.Default.DataUsage, Modifier.weight(1f))
+            Action("القواعد", "جدولة ذكية", Icons.Default.Block, Modifier.weight(1f))
+        } }
+    }
+}
+
+@Composable
+private fun StatsScreen(modifier: Modifier, usageGranted: Boolean, viewModel: UsageViewModel, onUsage: () -> Unit) {
+    val today by viewModel.today.collectAsState()
+    val week by viewModel.week.collectAsState()
+    val month by viewModel.month.collectAsState()
+    val loading by viewModel.loading.collectAsState()
+
+    LazyColumn(
+        modifier = modifier.fillMaxSize().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp)
+    ) {
         item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Action("التطبيقات", "إدارة الاتصال", Icons.Default.Apps, Modifier.weight(1f))
-                Action("السرعة", "حدود التحميل", Icons.Default.Speed, Modifier.weight(1f))
+            GlassCard(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = .10f)) {
+                Column(Modifier.padding(20.dp)) {
+                    Text("الإحصائيات", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                    Text("استهلاك الشبكة المقروء من عدادات Android الرسمية", style = MaterialTheme.typography.bodySmall)
+                    if (!usageGranted) {
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedButton(onClick = onUsage, modifier = Modifier.fillMaxWidth()) { Text("منح صلاحية Usage Access") }
+                    }
+                }
             }
         }
+        item { PeriodCard("اليوم", today) }
+        item { PeriodCard("هذا الأسبوع", week) }
+        item { PeriodCard("هذا الشهر", month) }
         item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Action("الحصص", "حدود البيانات", Icons.Default.DataUsage, Modifier.weight(1f))
-                Action("القواعد", "جدولة ذكية", Icons.Default.Block, Modifier.weight(1f))
+            GlassCard {
+                Column(Modifier.padding(18.dp)) {
+                    Text("أكثر التطبيقات استهلاكًا اليوم", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(10.dp))
+                    if (today.topApps.isEmpty()) Text("لا توجد بيانات استهلاك متاحة بعد.")
+                    else today.topApps.forEach { TopAppRow(it) }
+                }
             }
         }
+        if (loading) item { Text("جارٍ تحديث الإحصائيات...") }
+        item {
+            OutlinedButton(onClick = viewModel::refresh, modifier = Modifier.fillMaxWidth()) { Text("تحديث البيانات") }
+        }
+    }
+}
+
+@Composable
+private fun PeriodCard(title: String, summary: UsageSummary) {
+    GlassCard {
+        Column(Modifier.padding(18.dp)) {
+            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(10.dp))
+            Text(DataFormatter.bytes(summary.total.totalBytes), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            Text("Wi-Fi: ${DataFormatter.bytes(summary.wifi)}")
+            Text("بيانات الجوال: ${DataFormatter.bytes(summary.mobile)}")
+            Text("التطبيقات ذات الاستهلاك: ${summary.appCount}")
+        }
+    }
+}
+
+@Composable
+private fun TopAppRow(row: AppUsageRow) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Surface(modifier = Modifier.size(38.dp), shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.primary.copy(alpha = .10f)) {
+            Icon(Icons.Default.Apps, contentDescription = null, modifier = Modifier.padding(9.dp), tint = MaterialTheme.colorScheme.primary)
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(row.app.label, fontWeight = FontWeight.SemiBold)
+            Text(row.app.packageName, style = MaterialTheme.typography.labelSmall)
+        }
+        Text(DataFormatter.bytes(row.usage.totalBytes), fontWeight = FontWeight.Bold)
     }
 }
 
@@ -419,12 +449,7 @@ private fun Metric(title: String, value: String, modifier: Modifier) {
 }
 
 @Composable
-private fun Action(
-    title: String,
-    subtitle: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    modifier: Modifier
-) {
+private fun Action(title: String, subtitle: String, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier) {
     GlassCard(modifier = modifier) {
         Column(Modifier.padding(16.dp)) {
             Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -443,12 +468,7 @@ private fun Section(modifier: Modifier, title: String, description: String) {
             Column(Modifier.padding(20.dp)) {
                 Text(description, style = MaterialTheme.typography.bodyLarge)
                 Spacer(Modifier.height(14.dp))
-                Button(
-                    onClick = {},
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("سيتم تفعيل هذه الوحدة مع المحرك")
-                }
+                Button(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text("سيتم تفعيل هذه الوحدة مع المحرك") }
             }
         }
     }
@@ -464,10 +484,7 @@ private fun GlassCard(
         modifier = modifier,
         colors = CardDefaults.cardColors(containerColor = containerColor),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        border = BorderStroke(
-            1.dp,
-            MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)
-        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
         shape = MaterialTheme.shapes.large,
         content = content
     )
