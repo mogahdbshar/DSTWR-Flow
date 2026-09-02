@@ -4,7 +4,7 @@ import com.dstwr.flow.data.apps.InstalledApp
 import com.dstwr.flow.data.local.FlowDatabase
 import com.dstwr.flow.data.local.UsageSnapshotEntity
 
-/** Persists periodic usage snapshots locally so historical charts can be built later. */
+/** Persists periodic usage snapshots locally for historical statistics. */
 class UsageSnapshotRepository(private val database: FlowDatabase) {
     private val dao = database.usageSnapshotDao()
 
@@ -39,9 +39,9 @@ class UsageSnapshotRepository(private val database: FlowDatabase) {
         }
     }
 
-    suspend fun cleanup(keepFrom: Long) {
-        dao.deleteBefore(keepFrom)
-    }
+    suspend fun history(since: Long): List<UsageSnapshotEntity> = dao.since(since)
+
+    suspend fun cleanup(keepFrom: Long) = dao.deleteBefore(keepFrom)
 
     companion object {
         const val NETWORK_WIFI = 1
