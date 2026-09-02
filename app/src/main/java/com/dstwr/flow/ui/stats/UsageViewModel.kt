@@ -5,7 +5,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.dstwr.flow.data.apps.AppInventoryRepository
 import com.dstwr.flow.data.apps.InstalledApp
+import com.dstwr.flow.data.local.FlowDatabaseProvider
 import com.dstwr.flow.data.usage.AppUsage
+import com.dstwr.flow.data.usage.UsageSnapshotRepository
 import com.dstwr.flow.data.usage.UsageStatsRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,6 +32,7 @@ data class AppUsageRow(
 class UsageViewModel(application: Application) : AndroidViewModel(application) {
     private val inventory = AppInventoryRepository(application)
     private val repository = UsageStatsRepository(application)
+    private val snapshotRepository = UsageSnapshotRepository(FlowDatabaseProvider.get(application))
 
     private val _today = MutableStateFlow(UsageSummary())
     val today: StateFlow<UsageSummary> = _today.asStateFlow()
@@ -51,9 +54,15 @@ class UsageViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val apps = inventory.getLaunchableApps()
                 val now = System.currentTimeMillis()
-                _today.value = load(apps, startOfDay(now), now)
+                val todayStart = startOfDay(now)
+                val usages = repository.queryApps(apps, todayStart, now)
+
+                _today.value = summarize(apps, usages)
                 _week.value = load(apps, startOfWeek(now), now)
                 _month.value = load(apps, startOfMonth(now), now)
+
+                snapshotRepository.save(apps, usages, todayStart, now)
+                snapshotRepository.cleanup(startOfMonth(now - 90L * DAY_MILLIS))
             } finally {
                 _loading.value = false
             }
@@ -62,6 +71,10 @@ class UsageViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun load(apps: List<InstalledApp>, start: Long, end: Long): UsageSummary {
         val usages = repository.queryApps(apps, start, end)
+        return summarize(apps, usages)
+    }
+
+    private fun summarize(apps: List<InstalledApp>, usages: Map<String, AppUsage>): UsageSummary {
         val rows = apps.mapNotNull { app -> usages[app.packageName]?.let { AppUsageRow(app, it) } }
         val total = rows.fold(AppUsage(0, "", 0L, 0L)) { acc, row -> acc + row.usage }
         return UsageSummary(
@@ -100,4 +113,8 @@ class UsageViewModel(application: Application) : AndroidViewModel(application) {
         mobileRxBytes = mobileRxBytes + other.mobileRxBytes,
         mobileTxBytes = mobileTxBytes + other.mobileTxBytes
     )
+
+    companion object {
+        private const val DAY_MILLIS = 24L * 60L * 60L * 1000L
+    }
 }
