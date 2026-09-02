@@ -11,6 +11,9 @@ object FlowDatabaseProvider {
             context.applicationContext,
             FlowDatabase::class.java,
             "dstwr_flow.db"
-        ).build().also { instance = it }
+        )
+            .addMigrations(FlowDatabaseMigrations.V1_TO_V2)
+            .build()
+            .also { instance = it }
     }
 }
