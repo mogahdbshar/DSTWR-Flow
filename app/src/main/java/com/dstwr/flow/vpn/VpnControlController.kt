@@ -6,24 +6,36 @@ import android.net.VpnService
 import androidx.core.content.ContextCompat
 
 /**
- * Single entry point for starting and stopping the local VPN controller.
- * The controller never requests VPN consent silently. Consent is handled by
- * the Activity through VpnService.prepare().
+ * Single entry point for the local VPN controller.
+ * VPN consent is never requested silently here. The Activity owns consent UI.
  */
-class VpnControlController(private val context: Context) {
+class VpnControlController(context: Context) {
+    private val appContext = context.applicationContext
+
     fun start(emergencyBlock: Boolean = false) {
-        val intent = Intent(context, FlowVpnService::class.java).apply {
+        require(isPrepared()) { "VPN consent is required before starting DSTWR Flow" }
+        val intent = Intent(appContext, FlowVpnService::class.java).apply {
             putExtra(FlowVpnService.EXTRA_EMERGENCY, emergencyBlock)
         }
-        ContextCompat.startForegroundService(context, intent)
+        ContextCompat.startForegroundService(appContext, intent)
+    }
+
+    /** Re-evaluates the persisted policy while keeping the controller active. */
+    fun apply(emergencyBlock: Boolean = false) {
+        require(isPrepared()) { "VPN consent is required before applying DSTWR Flow policy" }
+        val intent = Intent(appContext, FlowVpnService::class.java).apply {
+            action = FlowVpnService.ACTION_APPLY
+            putExtra(FlowVpnService.EXTRA_EMERGENCY, emergencyBlock)
+        }
+        ContextCompat.startForegroundService(appContext, intent)
     }
 
     fun stop() {
-        val intent = Intent(context, FlowVpnService::class.java).apply {
+        val intent = Intent(appContext, FlowVpnService::class.java).apply {
             action = FlowVpnService.ACTION_STOP
         }
-        context.startService(intent)
+        appContext.startService(intent)
     }
 
-    fun isPrepared(): Boolean = VpnService.prepare(context) == null
+    fun isPrepared(): Boolean = VpnService.prepare(appContext) == null
 }
