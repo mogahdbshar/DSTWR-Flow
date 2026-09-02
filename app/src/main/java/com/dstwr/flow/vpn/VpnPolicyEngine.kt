@@ -2,22 +2,45 @@ package com.dstwr.flow.vpn
 
 import android.content.Context
 import android.net.VpnService
+import com.dstwr.flow.data.apps.AppInventoryRepository
+import com.dstwr.flow.data.apps.AppPolicyRepository
 import com.dstwr.flow.data.local.FlowDatabaseProvider
+import com.dstwr.flow.data.usage.UsageStatsRepository
+import com.dstwr.flow.domain.policy.AppPolicyRuntime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * Builds the local VPN policy from the locally stored app policies.
+ * Builds the local VPN policy from the current application policy state.
  *
  * The current routing mode intentionally implements only blocking:
- * blocked applications are routed into the local VPN tunnel, where there is
+ * selected applications are routed into the local VPN tunnel, where there is
  * currently no upstream forwarding engine, so their traffic is stopped.
- * Applications not listed as blocked stay outside the VPN and keep using the
- * normal Android network path.
+ * Applications not selected for blocking remain outside the VPN.
  */
 class VpnPolicyEngine(private val context: Context) {
     private val database = FlowDatabaseProvider.get(context)
+    private val inventory = AppInventoryRepository(context)
+    private val runtime = AppPolicyRuntime(
+        policyRepository = AppPolicyRepository(database),
+        usageRepository = UsageStatsRepository(context)
+    )
 
+    /**
+     * Evaluates persisted policies against the current time and usage counters.
+     * The result contains only applications that should be blocked now.
+     */
+    suspend fun activeBlockedPackages(emergencyBlock: Boolean): List<String> = withContext(Dispatchers.IO) {
+        if (emergencyBlock) return@withContext inventory.getLaunchableApps().map { it.packageName }
+
+        val apps = inventory.getLaunchableApps().map { it.packageName to it.uid }
+        runtime.evaluatePolicies(apps, emergencyBlock)
+            .filterValues { it.blocked }
+            .keys
+            .toList()
+    }
+
+    /** Backward-compatible manual-policy query for callers that need it. */
     suspend fun blockedPackages(): List<String> = withContext(Dispatchers.IO) {
         database.appPolicyDao().getAll()
             .filter { it.blocked }
