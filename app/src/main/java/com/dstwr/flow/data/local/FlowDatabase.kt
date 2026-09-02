@@ -19,6 +19,7 @@ data class AppPolicyEntity(
     val scheduleEnabled: Boolean = false,
     val scheduleStartMinutes: Int = 0,
     val scheduleEndMinutes: Int = 1439,
+    val networkScope: String = "ALL",
     val updatedAt: Long = System.currentTimeMillis()
 )
 
@@ -50,7 +51,7 @@ interface UsageSnapshotDao {
     @Query("DELETE FROM usage_snapshots WHERE startTime < :before") suspend fun deleteBefore(before: Long)
 }
 
-@Database(entities = [AppPolicyEntity::class, UsageSnapshotEntity::class], version = 1, exportSchema = false)
+@Database(entities = [AppPolicyEntity::class, UsageSnapshotEntity::class], version = 2, exportSchema = false)
 abstract class FlowDatabase : RoomDatabase() {
     abstract fun appPolicyDao(): AppPolicyDao
     abstract fun usageSnapshotDao(): UsageSnapshotDao
