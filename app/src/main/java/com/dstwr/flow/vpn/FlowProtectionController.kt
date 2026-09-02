@@ -33,11 +33,12 @@ class FlowProtectionController(context: Context) {
     }
 
     suspend fun reapply() {
-        val current = settings.settings.first()
-        if (!current.protectionEnabled || !vpn.isPrepared()) {
-            if (!current.protectionEnabled) vpn.stop()
+        val protection = settings.protectionEnabled.first()
+        val emergency = settings.emergencyBlockEnabled.first()
+        if (!protection || !vpn.isPrepared()) {
+            if (!protection) vpn.stop()
             return
         }
-        vpn.start(emergencyBlock = current.emergencyBlockEnabled)
+        vpn.start(emergencyBlock = emergency)
     }
 }
