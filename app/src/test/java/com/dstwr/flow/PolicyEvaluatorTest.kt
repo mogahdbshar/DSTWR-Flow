@@ -1,6 +1,7 @@
 package com.dstwr.flow
 
 import com.dstwr.flow.domain.model.AppPolicy
+import com.dstwr.flow.vpn.PolicyDecision
 import com.dstwr.flow.vpn.PolicyEvaluator
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -13,7 +14,7 @@ class PolicyEvaluatorTest {
     @Test fun manualBlockWins() {
         val result = evaluator.evaluate(AppPolicy("com.test", blocked = true), 600, 0, 0, false)
         assertTrue(result.blocked)
-        assertEquals(PolicyEvaluator.PolicyDecision.Reason.MANUAL_BLOCK, result.reason)
+        assertEquals(PolicyDecision.Reason.MANUAL_BLOCK, result.reason)
     }
 
     @Test fun scheduleHandlesMidnight() {
@@ -24,12 +25,12 @@ class PolicyEvaluatorTest {
     @Test fun dailyQuotaBlocksAfterLimit() {
         val result = evaluator.evaluate(AppPolicy("com.test", dailyQuotaBytes = 1000), 600, 1000, 0, false)
         assertTrue(result.blocked)
-        assertEquals(PolicyEvaluator.PolicyDecision.Reason.DAILY_QUOTA, result.reason)
+        assertEquals(PolicyDecision.Reason.DAILY_QUOTA, result.reason)
     }
 
     @Test fun emergencyBlocksWithoutPolicy() {
         val result = evaluator.evaluate(null, 600, 0, 0, true)
         assertTrue(result.blocked)
-        assertEquals(PolicyEvaluator.PolicyDecision.Reason.EMERGENCY, result.reason)
+        assertEquals(PolicyDecision.Reason.EMERGENCY, result.reason)
     }
 }
