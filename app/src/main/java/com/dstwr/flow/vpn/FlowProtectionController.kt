@@ -11,8 +11,11 @@ class FlowProtectionController(context: Context) {
     private val vpn = VpnControlController(appContext)
 
     suspend fun enableProtection(): Boolean {
+        if (!vpn.isPrepared()) {
+            settings.setProtectionEnabled(false)
+            return false
+        }
         settings.setProtectionEnabled(true)
-        if (!vpn.isPrepared()) return false
         val emergency = settings.emergencyBlockEnabled.first()
         vpn.start(emergencyBlock = emergency)
         return true
@@ -41,4 +44,6 @@ class FlowProtectionController(context: Context) {
         }
         vpn.start(emergencyBlock = emergency)
     }
+
+    fun isPrepared(): Boolean = vpn.isPrepared()
 }
