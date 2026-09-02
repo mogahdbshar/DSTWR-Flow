@@ -16,7 +16,7 @@ class AppPolicyRuntimeCoordinator(
         nowMillis: Long = System.currentTimeMillis()
     ): RuntimeDecision {
         val policy = policyRepository.get(packageName)
-        val time = PolicyTime.fromMillis(nowMillis)
+        val time = PolicyTimeWindowFactory.fromMillis(nowMillis)
         val usage = usageWindowRepository.queryCurrentWindows(uid, nowMillis)
         val policyUsage = PolicyUsage.from(usage.daily, usage.monthly)
         val decision = evaluator.evaluate(
