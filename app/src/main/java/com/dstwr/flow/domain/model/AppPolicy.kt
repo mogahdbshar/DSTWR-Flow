@@ -9,7 +9,8 @@ data class AppPolicy(
     val monthlyQuotaBytes: Long = 0L,
     val scheduleEnabled: Boolean = false,
     val scheduleStartMinutes: Int = 0,
-    val scheduleEndMinutes: Int = 1439
+    val scheduleEndMinutes: Int = 1439,
+    val networkScope: NetworkScope = NetworkScope.ALL
 )
 
 enum class NetworkScope { WIFI, MOBILE, ALL }
