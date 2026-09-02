@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.Apps
@@ -54,14 +56,19 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.dstwr.flow.ui.apps.AppRow
+import com.dstwr.flow.ui.apps.AppsViewModel
 import com.dstwr.flow.ui.theme.DSTWRFlowTheme
 
 class MainActivity : ComponentActivity() {
+    private val appsViewModel: AppsViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -69,10 +76,16 @@ class MainActivity : ComponentActivity() {
                 FlowApp(
                     usageAccessGranted = hasUsageAccess(),
                     onOpenUsageAccess = { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) },
-                    onRequestVpn = { requestVpnPermission() }
+                    onRequestVpn = { requestVpnPermission() },
+                    appsViewModel = appsViewModel
                 )
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        appsViewModel.refresh()
     }
 
     private fun hasUsageAccess(): Boolean {
@@ -96,7 +109,8 @@ class MainActivity : ComponentActivity() {
 private fun FlowApp(
     usageAccessGranted: Boolean,
     onOpenUsageAccess: () -> Unit,
-    onRequestVpn: () -> Unit
+    onRequestVpn: () -> Unit,
+    appsViewModel: AppsViewModel
 ) {
     var tab by remember { mutableIntStateOf(0) }
     var protection by remember { mutableStateOf(false) }
@@ -133,7 +147,10 @@ private fun FlowApp(
                 onEmergency = { emergencyBlock = it },
                 onUsage = onOpenUsageAccess
             )
-            1 -> Section(Modifier.padding(padding), "التطبيقات", "ستُدار هنا سياسات كل تطبيق: السماح، الحظر، الحصة، السرعة والجدولة.")
+            1 -> AppsScreen(
+                modifier = Modifier.padding(padding),
+                viewModel = appsViewModel
+            )
             2 -> Section(Modifier.padding(padding), "الإحصائيات", "ستظهر هنا بيانات NetworkStatsManager وسجل Room اليومي والأسبوعي والشهري.")
             else -> Section(Modifier.padding(padding), "المزيد", "الإعدادات واللغة والإشعارات والخصوصية والأذونات ومعلومات التطبيق.")
         }
@@ -169,6 +186,117 @@ private fun FlowTopBar() {
             IconButton(onClick = {}) { Icon(Icons.Default.Settings, contentDescription = "الإعدادات") }
         }
     )
+}
+
+@Composable
+private fun AppsScreen(
+    modifier: Modifier,
+    viewModel: AppsViewModel
+) {
+    val apps by viewModel.apps.collectAsState()
+    val loading by viewModel.loading.collectAsState()
+
+    LazyColumn(
+        modifier = modifier.fillMaxSize().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp)
+    ) {
+        item {
+            GlassCard(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = .10f)) {
+                Column(Modifier.padding(18.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = MaterialTheme.shapes.large,
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = .16f)
+                        ) {
+                            Icon(
+                                Icons.Default.Apps,
+                                contentDescription = null,
+                                modifier = Modifier.padding(12.dp).size(28.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("تطبيقات الجهاز", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Text("إدارة الاتصال لكل تطبيق من مكان واحد")
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "هذه القائمة تقرأ التطبيقات التي تظهر في مشغل الجهاز، وتخزن سياسة الحظر محليًا. الحظر الفعلي سيُربط بمحرك الشبكة في المرحلة التالية.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        }
+        if (loading) {
+            item {
+                GlassCard {
+                    Text("جارٍ تحديث قائمة التطبيقات...", modifier = Modifier.padding(18.dp))
+                }
+            }
+        }
+        if (!loading && apps.isEmpty()) {
+            item {
+                GlassCard {
+                    Column(Modifier.padding(18.dp)) {
+                        Text("لم يتم العثور على تطبيقات قابلة للتشغيل.")
+                        Spacer(Modifier.height(10.dp))
+                        OutlinedButton(onClick = viewModel::refresh) {
+                            Text("تحديث")
+                        }
+                    }
+                }
+            }
+        }
+        items(apps, key = { it.app.packageName }) { row ->
+            AppPolicyCard(
+                row = row,
+                onBlockedChange = { viewModel.setBlocked(row.app.packageName, it) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun AppPolicyCard(
+    row: AppRow,
+    onBlockedChange: (Boolean) -> Unit
+) {
+    GlassCard {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                modifier = Modifier.size(46.dp),
+                shape = MaterialTheme.shapes.medium,
+                color = if (row.blocked) {
+                    MaterialTheme.colorScheme.error.copy(alpha = .12f)
+                } else {
+                    MaterialTheme.colorScheme.primary.copy(alpha = .10f)
+                }
+            ) {
+                Icon(
+                    if (row.blocked) Icons.Default.Block else Icons.Default.Apps,
+                    contentDescription = null,
+                    modifier = Modifier.padding(11.dp),
+                    tint = if (row.blocked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(row.app.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(
+                    if (row.app.systemApp) "تطبيق نظام" else "تطبيق مستخدم",
+                    style = MaterialTheme.typography.labelSmall
+                )
+                Text(row.app.packageName, style = MaterialTheme.typography.labelSmall)
+            }
+            Switch(checked = row.blocked, onCheckedChange = onBlockedChange)
+        }
+    }
 }
 
 @Composable
