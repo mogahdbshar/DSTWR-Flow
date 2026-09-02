@@ -11,6 +11,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -35,7 +36,6 @@ import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -67,9 +67,7 @@ class MainActivity : ComponentActivity() {
             DSTWRFlowTheme {
                 FlowApp(
                     usageAccessGranted = hasUsageAccess(),
-                    onOpenUsageAccess = {
-                        startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
-                    },
+                    onOpenUsageAccess = { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) },
                     onRequestVpn = { requestVpnPermission() }
                 )
             }
@@ -86,17 +84,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestVpnPermission() {
-        VpnService.prepare(this)?.let {
-            startActivityForResult(it, VPN_REQUEST_CODE)
-        }
+        VpnService.prepare(this)?.let { startActivityForResult(it, VPN_REQUEST_CODE) }
     }
 
-    companion object {
-        private const val VPN_REQUEST_CODE = 1001
-    }
+    companion object { private const val VPN_REQUEST_CODE = 1001 }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FlowApp(
     usageAccessGranted: Boolean,
@@ -130,54 +123,36 @@ private fun FlowApp(
     ) { padding ->
         when (tab) {
             0 -> Dashboard(
-                modifier = Modifier.padding(padding),
-                protection = protection,
-                emergency = emergencyBlock,
-                usageGranted = usageAccessGranted,
-                onProtection = {
-                    protection = it
-                    if (it) onRequestVpn()
-                },
-                onEmergency = { emergencyBlock = it },
-                onUsage = onOpenUsageAccess
-            )
-            1 -> Section(
                 Modifier.padding(padding),
-                "التطبيقات",
-                "ستُدار هنا سياسات كل تطبيق: السماح، الحظر، الحصة، السرعة والجدولة."
+                protection,
+                emergencyBlock,
+                usageAccessGranted,
+                { protection = it; if (it) onRequestVpn() },
+                { emergencyBlock = it },
+                onOpenUsageAccess
             )
-            2 -> Section(
-                Modifier.padding(padding),
-                "الإحصائيات",
-                "ستظهر هنا بيانات NetworkStatsManager وسجل Room اليومي والأسبوعي والشهري."
-            )
-            else -> Section(
-                Modifier.padding(padding),
-                "المزيد",
-                "الإعدادات واللغة والإشعارات والخصوصية والأذونات ومعلومات التطبيق."
-            )
+            1 -> Section(Modifier.padding(padding), "التطبيقات", "ستُدار هنا سياسات كل تطبيق: السماح، الحظر، الحصة، السرعة والجدولة.")
+            2 -> Section(Modifier.padding(padding), "الإحصائيات", "ستظهر هنا بيانات NetworkStatsManager وسجل Room اليومي والأسبوعي والشهري.")
+            else -> Section(Modifier.padding(padding), "المزيد", "الإعدادات واللغة والإشعارات والخصوصية والأذونات ومعلومات التطبيق.")
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@androidx.compose.material3.ExperimentalMaterial3Api
 @Composable
 private fun FlowTopBar() {
     TopAppBar(
         title = {
             Column {
                 Text("DSTWR Flow", fontWeight = FontWeight.Bold)
-                Text(
-                    "تحكم ذكي في اتصال جهازك",
-                    style = MaterialTheme.typography.labelSmall
-                )
+                Text("تحكم ذكي في اتصال جهازك", style = MaterialTheme.typography.labelSmall)
             }
         },
         navigationIcon = {
             Surface(
                 modifier = Modifier.padding(start = 12.dp),
                 shape = MaterialTheme.shapes.medium,
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                color = MaterialTheme.colorScheme.primary.copy(alpha = .12f)
             ) {
                 Icon(
                     Icons.Default.Shield,
@@ -188,12 +163,8 @@ private fun FlowTopBar() {
             }
         },
         actions = {
-            IconButton(onClick = {}) {
-                Icon(Icons.Default.NotificationsNone, contentDescription = "الإشعارات")
-            }
-            IconButton(onClick = {}) {
-                Icon(Icons.Default.Settings, contentDescription = "الإعدادات")
-            }
+            IconButton(onClick = {}) { Icon(Icons.Default.NotificationsNone, "الإشعارات") }
+            IconButton(onClick = {}) { Icon(Icons.Default.Settings, "الإعدادات") }
         }
     )
 }
@@ -209,44 +180,31 @@ private fun Dashboard(
     onUsage: () -> Unit
 ) {
     LazyColumn(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp),
+        modifier = modifier.fillMaxSize().padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
         contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp)
     ) {
         item {
-            GlassCard(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)) {
+            GlassCard(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = .10f)) {
                 Column(Modifier.padding(20.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Surface(
                             shape = MaterialTheme.shapes.large,
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = .16f)
                         ) {
                             Icon(
                                 Icons.Default.Shield,
                                 contentDescription = null,
-                                modifier = Modifier
-                                    .padding(12.dp)
-                                    .size(28.dp),
+                                modifier = Modifier.padding(12.dp).size(28.dp),
                                 tint = MaterialTheme.colorScheme.primary
                             )
                         }
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(
-                                "الحماية الذكية",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                if (protection) "تم طلب تفعيل التحكم المحلي" else "التحكم متوقف حاليًا"
-                            )
+                            Text("الحماية الذكية", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Text(if (protection) "تم طلب تفعيل التحكم المحلي" else "التحكم متوقف حاليًا")
                         }
-                        Switch(
-                            checked = protection,
-                            onCheckedChange = onProtection
-                        )
+                        Switch(checked = protection, onCheckedChange = onProtection)
                     }
                     Spacer(Modifier.height(12.dp))
                     Text(
@@ -256,108 +214,61 @@ private fun Dashboard(
                 }
             }
         }
-
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Metric("اليوم", "0 B", Modifier.weight(1f))
                 Metric("هذا الشهر", "0 B", Modifier.weight(1f))
             }
         }
-
         item {
             GlassCard {
-                Row(
-                    modifier = Modifier.padding(18.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         Icons.Default.Block,
                         contentDescription = null,
-                        tint = if (emergency) MaterialTheme.colorScheme.error
-                        else MaterialTheme.colorScheme.primary
+                        tint = if (emergency) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                     )
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(
-                            "قاطع الإنترنت",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            "واجهة التحكم الطارئ، ولن تُنفذ الحظر قبل اكتمال محرك التوجيه.",
-                            style = MaterialTheme.typography.bodySmall
-                        )
+                        Text("قاطع الإنترنت", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("واجهة التحكم الطارئ، ولن تُنفذ الحظر قبل اكتمال محرك التوجيه.", style = MaterialTheme.typography.bodySmall)
                     }
-                    Switch(
-                        checked = emergency,
-                        onCheckedChange = onEmergency
-                    )
+                    Switch(checked = emergency, onCheckedChange = onEmergency)
                 }
             }
         }
-
         item {
             GlassCard {
                 Column(Modifier.padding(18.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Default.DataUsage,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
-                        )
+                        Icon(Icons.Default.DataUsage, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
+                            Text("إحصائيات الاستخدام", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             Text(
-                                "إحصائيات الاستخدام",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                if (usageGranted) "الصلاحية متاحة"
-                                else "مطلوبة لقراءة استهلاك التطبيقات",
+                                if (usageGranted) "الصلاحية متاحة" else "مطلوبة لقراءة استهلاك التطبيقات",
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
                     }
                     if (!usageGranted) {
                         Spacer(Modifier.height(12.dp))
-                        OutlinedButton(
-                            onClick = onUsage,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
+                        OutlinedButton(onClick = onUsage, modifier = Modifier.fillMaxWidth()) {
                             Text("فتح إعدادات الصلاحية")
                         }
                     }
                 }
             }
         }
-
+        item { Text("أدوات التحكم", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
         item {
-            Text(
-                "أدوات التحكم",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-        }
-
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Action("التطبيقات", "إدارة الاتصال", Icons.Default.Apps, Modifier.weight(1f))
                 Action("السرعة", "حدود التحميل", Icons.Default.Speed, Modifier.weight(1f))
             }
         }
-
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Action("الحصص", "حدود البيانات", Icons.Default.DataUsage, Modifier.weight(1f))
                 Action("القواعد", "جدولة ذكية", Icons.Default.Block, Modifier.weight(1f))
             }
@@ -366,18 +277,12 @@ private fun Dashboard(
 }
 
 @Composable
-private fun Metric(title: String, value: String, modifier: Modifier) {
-    GlassCard(modifier = modifier) {
-        Column(Modifier.padding(16.dp)) {
-            Text(title, style = MaterialTheme.typography.labelLarge)
-            Spacer(Modifier.height(8.dp))
-            Text(
-                value,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold
-            )
-            Text("استهلاك الشبكة", style = MaterialTheme.typography.labelSmall)
-        }
+private fun Metric(title: String, value: String, modifier: Modifier) = GlassCard(modifier) {
+    Column(Modifier.padding(16.dp)) {
+        Text(title, style = MaterialTheme.typography.labelLarge)
+        Spacer(Modifier.height(8.dp))
+        Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text("استهلاك الشبكة", style = MaterialTheme.typography.labelSmall)
     }
 }
 
@@ -387,42 +292,24 @@ private fun Action(
     subtitle: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     modifier: Modifier
-) {
-    GlassCard(modifier = modifier) {
-        Column(Modifier.padding(16.dp)) {
-            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.height(10.dp))
-            Text(
-                title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-            Text(subtitle, style = MaterialTheme.typography.labelSmall)
-        }
+) = GlassCard(modifier) {
+    Column(Modifier.padding(16.dp)) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.height(10.dp))
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text(subtitle, style = MaterialTheme.typography.labelSmall)
     }
 }
 
 @Composable
 private fun Section(modifier: Modifier, title: String, description: String) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        Text(
-            title,
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold
-        )
+    Column(modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Text(title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
         GlassCard {
             Column(Modifier.padding(20.dp)) {
                 Text(description, style = MaterialTheme.typography.bodyLarge)
                 Spacer(Modifier.height(14.dp))
-                Button(
-                    onClick = {},
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                Button(onClick = {}, modifier = Modifier.fillMaxWidth()) {
                     Text("سيتم تفعيل هذه الوحدة مع المحرك")
                 }
             }
@@ -434,7 +321,7 @@ private fun Section(modifier: Modifier, title: String, description: String) {
 private fun GlassCard(
     containerColor: Color = MaterialTheme.colorScheme.surface.copy(alpha = 0.84f),
     modifier: Modifier = Modifier,
-    content: @Composable () -> Unit
+    content: @Composable ColumnScope.() -> Unit
 ) {
     androidx.compose.material3.Card(
         modifier = modifier,
