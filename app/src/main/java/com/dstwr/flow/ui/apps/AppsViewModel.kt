@@ -10,6 +10,8 @@ import com.dstwr.flow.data.local.FlowDatabaseProvider
 import com.dstwr.flow.data.usage.AppUsage
 import com.dstwr.flow.data.usage.UsageStatsRepository
 import com.dstwr.flow.domain.model.AppPolicy
+import com.dstwr.flow.domain.model.NetworkScope
+import com.dstwr.flow.vpn.FlowProtectionController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,6 +31,7 @@ class AppsViewModel(application: Application) : AndroidViewModel(application) {
     private val inventory = AppInventoryRepository(application)
     private val policyRepository = AppPolicyRepository(FlowDatabaseProvider.get(application))
     private val usageRepository = UsageStatsRepository(application)
+    private val protectionController = FlowProtectionController(application)
 
     private val _apps = MutableStateFlow<List<AppRow>>(emptyList())
     val apps: StateFlow<List<AppRow>> = _apps.asStateFlow()
@@ -66,13 +69,76 @@ class AppsViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setBlocked(packageName: String, blocked: Boolean) {
+        updatePolicy(packageName) { copy(blocked = blocked) }
+    }
+
+    fun setSpeedLimits(packageName: String, downloadBytesPerSecond: Long, uploadBytesPerSecond: Long) {
+        updatePolicy(packageName) {
+            copy(
+                downloadLimitBytesPerSecond = downloadBytesPerSecond.coerceAtLeast(0L),
+                uploadLimitBytesPerSecond = uploadBytesPerSecond.coerceAtLeast(0L)
+            )
+        }
+    }
+
+    fun setQuotas(packageName: String, dailyBytes: Long, monthlyBytes: Long) {
+        updatePolicy(packageName) {
+            copy(
+                dailyQuotaBytes = dailyBytes.coerceAtLeast(0L),
+                monthlyQuotaBytes = monthlyBytes.coerceAtLeast(0L)
+            )
+        }
+    }
+
+    fun setSchedule(packageName: String, enabled: Boolean, startMinutes: Int, endMinutes: Int) {
+        updatePolicy(packageName) {
+            copy(
+                scheduleEnabled = enabled,
+                scheduleStartMinutes = startMinutes.coerceIn(0, 1439),
+                scheduleEndMinutes = endMinutes.coerceIn(0, 1439)
+            )
+        }
+    }
+
+    fun setNetworkScope(packageName: String, scope: NetworkScope) {
+        updatePolicy(packageName) { copy(networkScope = scope) }
+    }
+
+    private fun updatePolicy(packageName: String, transform: AppPolicy.() -> AppPolicy) {
         viewModelScope.launch(Dispatchers.IO) {
-            policyRepository.setBlocked(packageName, blocked)
-            _apps.value = _apps.value.map { row ->
-                if (row.app.packageName == packageName) {
-                    row.copy(policy = row.policy.copy(blocked = blocked))
-                } else row
+            val current = _apps.value.firstOrNull { it.app.packageName == packageName }?.policy
+                ?: policyRepository.get(packageName)
+                ?: AppPolicy(packageName = packageName)
+            val updated = transform(current)
+            when {
+                updated.blocked != current.blocked ->
+                    policyRepository.setBlocked(packageName, updated.blocked)
+                updated.downloadLimitBytesPerSecond != current.downloadLimitBytesPerSecond ||
+                    updated.uploadLimitBytesPerSecond != current.uploadLimitBytesPerSecond ->
+                    policyRepository.setSpeedLimits(
+                        packageName,
+                        updated.downloadLimitBytesPerSecond,
+                        updated.uploadLimitBytesPerSecond
+                    )
+                updated.dailyQuotaBytes != current.dailyQuotaBytes ||
+                    updated.monthlyQuotaBytes != current.monthlyQuotaBytes ->
+                    policyRepository.setQuotas(packageName, updated.dailyQuotaBytes, updated.monthlyQuotaBytes)
+                updated.scheduleEnabled != current.scheduleEnabled ||
+                    updated.scheduleStartMinutes != current.scheduleStartMinutes ||
+                    updated.scheduleEndMinutes != current.scheduleEndMinutes ->
+                    policyRepository.setSchedule(
+                        packageName,
+                        updated.scheduleEnabled,
+                        updated.scheduleStartMinutes,
+                        updated.scheduleEndMinutes
+                    )
+                updated.networkScope != current.networkScope ->
+                    policyRepository.setNetworkScope(packageName, updated.networkScope)
             }
+            _apps.value = _apps.value.map { row ->
+                if (row.app.packageName == packageName) row.copy(policy = updated) else row
+            }
+            runCatching { protectionController.reapply() }
         }
     }
 
