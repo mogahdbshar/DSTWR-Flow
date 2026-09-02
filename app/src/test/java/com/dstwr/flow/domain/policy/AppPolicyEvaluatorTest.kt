@@ -1,6 +1,7 @@
 package com.dstwr.flow.domain.policy
 
 import com.dstwr.flow.domain.model.AppPolicy
+import com.dstwr.flow.domain.model.NetworkScope
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -42,6 +43,32 @@ class AppPolicyEvaluatorTest {
     @Test
     fun monthlyQuotaBlocksAtLimit() {
         val result = evaluator.evaluate(base.copy(monthlyQuotaBytes = 5000), 500, 0, 5000, false)
+        assertTrue(result.blocked)
+        assertEquals(AppPolicyEvaluator.BlockReason.MONTHLY_QUOTA, result.reason)
+    }
+
+    @Test
+    fun wifiQuotaUsesWifiBytesOnly() {
+        val policy = base.copy(dailyQuotaBytes = 1000, networkScope = NetworkScope.WIFI)
+        val usage = PolicyUsage(dailyBytes = 5000, monthlyBytes = 5000, wifiBytes = 1000, mobileBytes = 5000)
+        val result = evaluator.evaluate(policy, 500, usage, false)
+        assertTrue(result.blocked)
+        assertEquals(AppPolicyEvaluator.BlockReason.DAILY_QUOTA, result.reason)
+    }
+
+    @Test
+    fun mobileQuotaIgnoresWifiBytes() {
+        val policy = base.copy(dailyQuotaBytes = 1000, networkScope = NetworkScope.MOBILE)
+        val usage = PolicyUsage(dailyBytes = 5000, monthlyBytes = 5000, wifiBytes = 5000, mobileBytes = 999)
+        val result = evaluator.evaluate(policy, 500, usage, false)
+        assertFalse(result.blocked)
+    }
+
+    @Test
+    fun monthlyScopedQuotaUsesMonthlyNetworkCounter() {
+        val policy = base.copy(monthlyQuotaBytes = 2000, networkScope = NetworkScope.MOBILE)
+        val usage = PolicyUsage(monthlyBytes = 9000, monthlyMobileBytes = 2000, mobileBytes = 100)
+        val result = evaluator.evaluate(policy, 500, usage, false)
         assertTrue(result.blocked)
         assertEquals(AppPolicyEvaluator.BlockReason.MONTHLY_QUOTA, result.reason)
     }
