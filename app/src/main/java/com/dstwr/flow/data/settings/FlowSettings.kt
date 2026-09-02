@@ -2,6 +2,7 @@ package com.dstwr.flow.data.settings
 
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -29,13 +30,7 @@ class FlowSettingsRepository(private val context: Context) {
     }
 
     val settings: Flow<FlowSettings> = context.flowDataStore.data.map { p ->
-        FlowSettings(
-            protectionEnabled = p[Keys.protection] ?: false,
-            emergencyBlockEnabled = p[Keys.emergency] ?: false,
-            language = p[Keys.language] ?: "ar",
-            refreshSeconds = p[Keys.refresh] ?: 15,
-            dailyLimitBytes = p[Keys.daily] ?: 0L
-        )
+        FlowSettings(p[Keys.protection] ?: false, p[Keys.emergency] ?: false, p[Keys.language] ?: "ar", p[Keys.refresh] ?: 15, p[Keys.daily] ?: 0L)
     }
 
     suspend fun setProtection(enabled: Boolean) = context.flowDataStore.edit { it[Keys.protection] = enabled }
