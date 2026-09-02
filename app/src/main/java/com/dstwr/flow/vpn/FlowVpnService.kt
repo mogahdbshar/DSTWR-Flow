@@ -32,9 +32,13 @@ class FlowVpnService : VpnService() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            stopVpn()
-            return START_NOT_STICKY
+        when (intent?.action) {
+            ACTION_STOP -> {
+                stopVpn()
+                return START_NOT_STICKY
+            }
+            ACTION_APPLY, null -> Unit
+            else -> Unit
         }
 
         createNotificationChannel()
@@ -57,18 +61,24 @@ class FlowVpnService : VpnService() {
     }
 
     private suspend fun applyPolicy(emergencyBlock: Boolean) {
-        val blockedPackages = policyEngine.activeBlockedPackages(emergencyBlock)
-        if (!emergencyBlock && blockedPackages.isEmpty()) {
+        try {
+            val blockedPackages = policyEngine.activeBlockedPackages(emergencyBlock)
+            if (!emergencyBlock && blockedPackages.isEmpty()) {
+                stopVpn()
+                return
+            }
+
+            vpnInterface?.close()
+            vpnInterface = policyEngine
+                .buildBlockingTunnel(blockedPackages, emergencyBlock)
+                .establish()
+
+            if (vpnInterface == null) stopVpn()
+        } catch (_: SecurityException) {
             stopVpn()
-            return
+        } catch (_: IllegalStateException) {
+            stopVpn()
         }
-
-        vpnInterface?.close()
-        vpnInterface = policyEngine
-            .buildBlockingTunnel(blockedPackages, emergencyBlock)
-            .establish()
-
-        if (vpnInterface == null) stopVpn()
     }
 
     private fun stopVpn() {
