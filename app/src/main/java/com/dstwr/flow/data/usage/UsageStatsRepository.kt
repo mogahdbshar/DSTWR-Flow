@@ -4,13 +4,13 @@ import android.app.usage.NetworkStats
 import android.app.usage.NetworkStatsManager
 import android.content.Context
 import android.net.ConnectivityManager
+import android.os.Build
 import android.os.Process
 import com.dstwr.flow.data.apps.InstalledApp
 
 /**
  * Reads Android's system network counters. No traffic is routed or modified here.
- * The user must grant Usage Access in Android settings before these counters are
- * expected to be available.
+ * Usage Access must be granted by the user for Android to return per-app data.
  */
 data class AppUsage(
     val uid: Int,
@@ -31,8 +31,8 @@ class UsageStatsRepository(private val context: Context) {
     private val manager = context.getSystemService(Context.NETWORK_STATS_SERVICE) as NetworkStatsManager
 
     fun queryUid(uid: Int, startTime: Long, endTime: Long): AppUsage {
-        val wifi = queryNetwork(uid, ConnectivityManager.TYPE_WIFI, startTime, endTime)
-        val mobile = queryNetwork(uid, ConnectivityManager.TYPE_MOBILE, startTime, endTime)
+        val wifi = queryNetwork(uid, wifiTransport(), startTime, endTime)
+        val mobile = queryNetwork(uid, mobileTransport(), startTime, endTime)
         return AppUsage(
             uid = uid,
             packageName = "",
@@ -68,13 +68,7 @@ class UsageStatsRepository(private val context: Context) {
         var rx = 0L
         var tx = 0L
         try {
-            val stats = manager.queryDetailsForUid(
-                networkType,
-                null,
-                startTime,
-                endTime,
-                uid
-            )
+            val stats = manager.queryDetailsForUid(networkType, null, startTime, endTime, uid)
             while (stats.hasNextBucket()) {
                 stats.getNextBucket(bucket)
                 rx += bucket.rxBytes
@@ -84,8 +78,22 @@ class UsageStatsRepository(private val context: Context) {
         } catch (_: SecurityException) {
             // Usage Access has not been granted yet.
         } catch (_: IllegalArgumentException) {
-            // Some Android/device combinations reject unavailable mobile details.
+            // Some devices reject a transport whose counters are unavailable.
         }
         return rx to tx
+    }
+
+    @Suppress("DEPRECATION")
+    private fun wifiTransport(): Int = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        ConnectivityManager.TYPE_WIFI
+    } else {
+        ConnectivityManager.TYPE_WIFI
+    }
+
+    @Suppress("DEPRECATION")
+    private fun mobileTransport(): Int = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        ConnectivityManager.TYPE_MOBILE
+    } else {
+        ConnectivityManager.TYPE_MOBILE
     }
 }
