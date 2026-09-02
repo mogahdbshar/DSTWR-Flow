@@ -10,33 +10,43 @@ import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
 import com.dstwr.flow.R
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 /**
- * Local VPN lifecycle foundation.
+ * Local VPN lifecycle and blocking policy controller.
  *
- * This class deliberately does not pretend to be a packet-forwarding engine.
- * A VPN tunnel without a forwarding loop blackholes traffic, so the tunnel is
- * only established after explicit user consent and the production routing
- * engine will be introduced separately.
+ * This phase implements a deliberate, safe blocking mode rather than a fake
+ * full VPN proxy. Blocked apps are routed into the local tunnel and therefore
+ * lose network access because no upstream forwarding is performed yet.
+ * Unblocked apps remain on Android's normal network path.
  */
 class FlowVpnService : VpnService() {
     private var vpnInterface: ParcelFileDescriptor? = null
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private lateinit var policyEngine: VpnPolicyEngine
+
+    override fun onCreate() {
+        super.onCreate()
+        policyEngine = VpnPolicyEngine(applicationContext)
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
             stopVpn()
             return START_NOT_STICKY
         }
+
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
-        if (vpnInterface == null) {
-            vpnInterface = Builder()
-                .setSession("DSTWR Flow")
-                .setMtu(1500)
-                .addAddress("10.10.0.2", 32)
-                .addRoute("0.0.0.0", 0)
-                .establish()
+
+        serviceScope.launch {
+            applyPolicy(emergencyBlock = intent?.getBooleanExtra(EXTRA_EMERGENCY, false) == true)
         }
+
         return START_STICKY
     }
 
@@ -44,13 +54,36 @@ class FlowVpnService : VpnService() {
 
     override fun onDestroy() {
         stopVpn()
+        serviceScope.cancel()
         super.onDestroy()
+    }
+
+    private suspend fun applyPolicy(emergencyBlock: Boolean) {
+        val blockedPackages = policyEngine.blockedPackages()
+        if (!emergencyBlock && blockedPackages.isEmpty()) {
+            stopVpn()
+            return
+        }
+
+        vpnInterface?.close()
+        vpnInterface = policyEngine
+            .buildBlockingTunnel(blockedPackages, emergencyBlock)
+            .establish()
+
+        if (vpnInterface == null) {
+            stopVpn()
+        }
     }
 
     private fun stopVpn() {
         vpnInterface?.close()
         vpnInterface = null
-        stopForeground(STOP_FOREGROUND_REMOVE)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
         stopSelf()
     }
 
@@ -58,7 +91,11 @@ class FlowVpnService : VpnService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "DSTWR Flow", NotificationManager.IMPORTANCE_LOW).apply {
+                NotificationChannel(
+                    CHANNEL_ID,
+                    "DSTWR Flow",
+                    NotificationManager.IMPORTANCE_LOW
+                ).apply {
                     description = "حالة التحكم المحلي في الشبكة"
                 }
             )
@@ -68,13 +105,14 @@ class FlowVpnService : VpnService() {
     private fun buildNotification(): Notification = NotificationCompat.Builder(this, CHANNEL_ID)
         .setSmallIcon(android.R.drawable.stat_sys_warning)
         .setContentTitle("DSTWR Flow")
-        .setContentText("خدمة التحكم المحلي في الشبكة تعمل")
+        .setContentText("التحكم المحلي في الشبكة يعمل")
         .setOngoing(true)
         .setCategory(NotificationCompat.CATEGORY_SERVICE)
         .build()
 
     companion object {
         const val ACTION_STOP = "com.dstwr.flow.action.STOP_VPN"
+        const val EXTRA_EMERGENCY = "emergency_block"
         private const val CHANNEL_ID = "dstwr_flow_service"
         private const val NOTIFICATION_ID = 7101
     }
