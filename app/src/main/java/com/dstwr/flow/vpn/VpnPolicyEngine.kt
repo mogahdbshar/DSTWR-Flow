@@ -5,8 +5,10 @@ import android.net.VpnService
 import com.dstwr.flow.data.apps.AppInventoryRepository
 import com.dstwr.flow.data.apps.AppPolicyRepository
 import com.dstwr.flow.data.local.FlowDatabaseProvider
+import com.dstwr.flow.data.usage.UsageWindowRepository
 import com.dstwr.flow.data.usage.UsageStatsRepository
-import com.dstwr.flow.domain.policy.AppPolicyRuntime
+import com.dstwr.flow.domain.policy.AppPolicyRuntimeCoordinator
+import com.dstwr.flow.domain.policy.RuntimeApp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -21,9 +23,9 @@ import kotlinx.coroutines.withContext
 class VpnPolicyEngine(private val context: Context) {
     private val database = FlowDatabaseProvider.get(context)
     private val inventory = AppInventoryRepository(context)
-    private val runtime = AppPolicyRuntime(
+    private val runtime = AppPolicyRuntimeCoordinator(
         policyRepository = AppPolicyRepository(database),
-        usageRepository = UsageStatsRepository(context)
+        usageWindowRepository = UsageWindowRepository(UsageStatsRepository(context))
     )
 
     /**
@@ -33,11 +35,10 @@ class VpnPolicyEngine(private val context: Context) {
     suspend fun activeBlockedPackages(emergencyBlock: Boolean): List<String> = withContext(Dispatchers.IO) {
         if (emergencyBlock) return@withContext inventory.getLaunchableApps().map { it.packageName }
 
-        val apps = inventory.getLaunchableApps().map { it.packageName to it.uid }
-        runtime.evaluatePolicies(apps, emergencyBlock)
-            .filterValues { it.blocked }
-            .keys
-            .toList()
+        val apps = inventory.getLaunchableApps().map { RuntimeApp(it.packageName, it.uid) }
+        runtime.evaluateAll(apps, emergencyBlock)
+            .filter { it.decision.blocked }
+            .map { it.packageName }
     }
 
     /** Backward-compatible manual-policy query for callers that need it. */
