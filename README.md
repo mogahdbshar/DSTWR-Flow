@@ -1,64 +1,92 @@
 # DSTWR Flow
 
-DSTWR Flow is a local-first Android network control and data intelligence app designed to give the user a clear, modern control center for internet usage.
+DSTWR Flow is a local-first Android network control and data intelligence suite. The goal is a production-quality control center for understanding and managing device network usage without root or a remote VPN server.
 
-## Product identity
+## Identity
 
 - Product: DSTWR Flow
 - Brand: DSTWR
 - Application ID: `com.dstwr.flow`
-- Language: Kotlin
-- UI: Jetpack Compose + Material 3
-- Minimum Android: API 24
-- Root: not required
-- Cloud account: none required
-- Design direction: premium, modern, glass-inspired control center
-
-## Product vision
-
-DSTWR Flow is not intended to be a basic data counter. The target is a polished, privacy-first network control suite with a fast dashboard, per-app controls, usage intelligence, schedules, quotas, notifications and a local VPN traffic engine.
-
-## Planned product areas
-
-- Device-wide traffic overview
-- Per-app Wi-Fi and mobile-data usage
-- Per-app allow/block controls
-- Global emergency internet cut-off
-- Local VPN traffic control without root
-- Per-app speed policies where Android capabilities permit
-- Daily and monthly data quotas
-- Scheduled rules
-- Usage history and charts
-- Threshold and rule notifications
-- Arabic-first RTL and English LTR interfaces
-- Modern glass-inspired cards and controls
+- Kotlin only
+- Jetpack Compose + Material 3
+- Minimum Android API 24
+- Local-first and privacy-focused
+- Arabic RTL + English LTR
 - Dark and light themes
-- Battery-conscious monitoring
-- Local-only data storage
-- Clear permission and privacy explanations
+- Premium glass-inspired visual language
 
-## Important technical boundary
+## Engineering architecture
 
-The application must never pretend that an Android API can do something it cannot. Exact per-app traffic shaping, full packet forwarding and complete IPv4/IPv6 interception require careful engineering around Android `VpnService` and device/version constraints. Features will therefore be implemented with explicit capability checks and safe fallbacks rather than fake switches.
+```text
+Presentation
+  Compose UI -> ViewModels -> StateFlow
 
-## Build
+Domain
+  Policies -> quotas -> schedules -> capability rules
 
-GitHub Actions is intentionally **manual-only**. The workflow is not triggered by every push, so development changes do not consume Actions runs automatically.
+Data
+  Room -> app policies + usage history
+  DataStore -> persistent user settings
 
-To build a debug APK, open the Actions tab, select **Build DSTWR Flow**, choose **Run workflow**, and start it manually.
+Android adapters
+  PackageManager -> installed launchable apps
+  NetworkStatsManager -> Wi-Fi/mobile usage accounting
+  VpnService -> local traffic interception foundation
+  Foreground Service -> persistent control lifecycle
 
-## Architecture direction
+Future traffic engine
+  TUN reader/writer -> protocol handling -> policy evaluation -> forwarding
+  IPv4 + IPv6 -> per-app rules -> quotas -> shaping where technically supported
+```
 
-The project is being developed toward a local-first architecture with clear separation between:
+## Current foundation
 
-- Presentation: Compose UI, state and navigation
-- Domain: rules, policies and business logic
-- Data: Room and DataStore
-- Usage: Android NetworkStatsManager integration
-- Traffic: VpnService and the local traffic engine
-- Background: foreground service and scheduled work
-- Notifications: threshold and rule events
+The repository now contains:
 
-## Development policy
+- A stable Material 3 Compose shell without the removed `SmallTopAppBar` API.
+- A premium dashboard foundation with RTL-friendly Arabic UI.
+- Explicit VPN consent handling.
+- A foreground-capable local VPN service lifecycle.
+- Room database entities and DAOs for app policies and usage snapshots.
+- DataStore persistence for protection, emergency mode, language, refresh rate and global quota settings.
+- Installed-app inventory through the Android launcher query.
+- NetworkStatsManager integration for per-UID accounting of Wi-Fi and mobile traffic.
+- Domain models for policies, network scope and control mode.
+- Unit tests for core data formatting.
 
-Changes are implemented in deliberate phases. After a major phase, the repository is built manually through GitHub Actions and the result is inspected before moving to the next phase. This reduces wasted build runs and prevents repeatedly stacking unverified changes.
+## What is deliberately not claimed yet
+
+A TUN interface by itself is not a complete VPN. Without a forwarding engine, intercepted packets can be dropped. Therefore DSTWR Flow does **not** advertise the current VPN foundation as a finished internet-blocking engine.
+
+Per-app speed shaping without root is also constrained by Android and depends on the eventual packet-forwarding architecture and OS/device capabilities. The production implementation will expose only capabilities that can actually be enforced.
+
+## Product modules
+
+1. Onboarding and permissions
+2. Live dashboard
+3. Installed applications
+4. Per-app policy editor
+5. Wi-Fi/mobile usage analytics
+6. Quotas and alerts
+7. Schedules and rule engine
+8. Local traffic engine
+9. Speed-control capability layer
+10. Notifications
+11. Settings and privacy center
+12. Arabic/English localization
+13. Diagnostics and safe fallbacks
+14. Tests and build validation
+
+## Permissions and privacy
+
+Usage access is an Android special access and is opened through system settings. VPN control requires the Android system consent dialog. The app is designed around local storage and does not require a cloud account or remote VPN server.
+
+## Build policy
+
+GitHub Actions is **manual-only** to conserve Actions usage. Do not expect a push to start a build.
+
+After each major engineering phase:
+
+`Actions` -> `Build DSTWR Flow` -> `Run workflow`
+
+The build result should be inspected before the next major phase.
