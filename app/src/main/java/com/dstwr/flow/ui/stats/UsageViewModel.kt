@@ -61,7 +61,9 @@ class UsageViewModel(application: Application) : AndroidViewModel(application) {
                 _week.value = load(apps, startOfWeek(now), now)
                 _month.value = load(apps, startOfMonth(now), now)
 
-                snapshotRepository.save(apps, usages, todayStart, now)
+                // The end of day is stable, so repeated refreshes replace the same snapshot.
+                val snapshotEnd = todayStart + DAY_MILLIS
+                snapshotRepository.save(apps, usages, todayStart, snapshotEnd)
                 snapshotRepository.cleanup(startOfMonth(now - 90L * DAY_MILLIS))
             } finally {
                 _loading.value = false
