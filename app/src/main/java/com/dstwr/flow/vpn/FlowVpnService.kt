@@ -9,7 +9,6 @@ import android.os.Build
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
-import com.dstwr.flow.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -19,10 +18,8 @@ import kotlinx.coroutines.launch
 /**
  * Local VPN lifecycle and blocking policy controller.
  *
- * This phase implements a deliberate, safe blocking mode rather than a fake
- * full VPN proxy. Blocked apps are routed into the local tunnel and therefore
- * lose network access because no upstream forwarding is performed yet.
- * Unblocked apps remain on Android's normal network path.
+ * This phase implements deliberate blocking, not a full VPN proxy. Active
+ * blocked apps are routed into the local tunnel with no upstream forwarding.
  */
 class FlowVpnService : VpnService() {
     private var vpnInterface: ParcelFileDescriptor? = null
@@ -42,11 +39,11 @@ class FlowVpnService : VpnService() {
 
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
+        val emergencyBlock = intent?.getBooleanExtra(EXTRA_EMERGENCY, false) == true
 
         serviceScope.launch {
-            applyPolicy(emergencyBlock = intent?.getBooleanExtra(EXTRA_EMERGENCY, false) == true)
+            applyPolicy(emergencyBlock)
         }
-
         return START_STICKY
     }
 
@@ -59,7 +56,7 @@ class FlowVpnService : VpnService() {
     }
 
     private suspend fun applyPolicy(emergencyBlock: Boolean) {
-        val blockedPackages = policyEngine.blockedPackages()
+        val blockedPackages = policyEngine.activeBlockedPackages(emergencyBlock)
         if (!emergencyBlock && blockedPackages.isEmpty()) {
             stopVpn()
             return
@@ -70,9 +67,7 @@ class FlowVpnService : VpnService() {
             .buildBlockingTunnel(blockedPackages, emergencyBlock)
             .establish()
 
-        if (vpnInterface == null) {
-            stopVpn()
-        }
+        if (vpnInterface == null) stopVpn()
     }
 
     private fun stopVpn() {
