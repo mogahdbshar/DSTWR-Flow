@@ -50,7 +50,8 @@ class FlowVpnService : VpnService() {
     override fun onBind(intent: Intent): IBinder? = super.onBind(intent)
 
     override fun onDestroy() {
-        stopVpn()
+        vpnInterface?.close()
+        vpnInterface = null
         serviceScope.cancel()
         super.onDestroy()
     }
@@ -107,6 +108,7 @@ class FlowVpnService : VpnService() {
 
     companion object {
         const val ACTION_STOP = "com.dstwr.flow.action.STOP_VPN"
+        const val ACTION_APPLY = "com.dstwr.flow.action.APPLY_POLICY"
         const val EXTRA_EMERGENCY = "emergency_block"
         private const val CHANNEL_ID = "dstwr_flow_service"
         private const val NOTIFICATION_ID = 7101
