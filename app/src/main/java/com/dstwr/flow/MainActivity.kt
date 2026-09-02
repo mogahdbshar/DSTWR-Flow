@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -90,6 +91,7 @@ class MainActivity : ComponentActivity() {
     companion object { private const val VPN_REQUEST_CODE = 1001 }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FlowApp(
     usageAccessGranted: Boolean,
@@ -114,7 +116,7 @@ private fun FlowApp(
                     NavigationBarItem(
                         selected = tab == item.third,
                         onClick = { tab = item.third },
-                        icon = { Icon(item.second, item.first) },
+                        icon = { Icon(item.second, contentDescription = item.first) },
                         label = { Text(item.first) }
                     )
                 }
@@ -123,13 +125,13 @@ private fun FlowApp(
     ) { padding ->
         when (tab) {
             0 -> Dashboard(
-                Modifier.padding(padding),
-                protection,
-                emergencyBlock,
-                usageAccessGranted,
-                { protection = it; if (it) onRequestVpn() },
-                { emergencyBlock = it },
-                onOpenUsageAccess
+                modifier = Modifier.padding(padding),
+                protection = protection,
+                emergency = emergencyBlock,
+                usageGranted = usageAccessGranted,
+                onProtection = { protection = it; if (it) onRequestVpn() },
+                onEmergency = { emergencyBlock = it },
+                onUsage = onOpenUsageAccess
             )
             1 -> Section(Modifier.padding(padding), "التطبيقات", "ستُدار هنا سياسات كل تطبيق: السماح، الحظر، الحصة، السرعة والجدولة.")
             2 -> Section(Modifier.padding(padding), "الإحصائيات", "ستظهر هنا بيانات NetworkStatsManager وسجل Room اليومي والأسبوعي والشهري.")
@@ -138,7 +140,7 @@ private fun FlowApp(
     }
 }
 
-@androidx.compose.material3.ExperimentalMaterial3Api
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FlowTopBar() {
     TopAppBar(
@@ -163,8 +165,8 @@ private fun FlowTopBar() {
             }
         },
         actions = {
-            IconButton(onClick = {}) { Icon(Icons.Default.NotificationsNone, "الإشعارات") }
-            IconButton(onClick = {}) { Icon(Icons.Default.Settings, "الإعدادات") }
+            IconButton(onClick = {}) { Icon(Icons.Default.NotificationsNone, contentDescription = "الإشعارات") }
+            IconButton(onClick = {}) { Icon(Icons.Default.Settings, contentDescription = "الإعدادات") }
         }
     )
 }
@@ -277,12 +279,14 @@ private fun Dashboard(
 }
 
 @Composable
-private fun Metric(title: String, value: String, modifier: Modifier) = GlassCard(modifier) {
-    Column(Modifier.padding(16.dp)) {
-        Text(title, style = MaterialTheme.typography.labelLarge)
-        Spacer(Modifier.height(8.dp))
-        Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text("استهلاك الشبكة", style = MaterialTheme.typography.labelSmall)
+private fun Metric(title: String, value: String, modifier: Modifier) {
+    GlassCard(modifier = modifier) {
+        Column(Modifier.padding(16.dp)) {
+            Text(title, style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(8.dp))
+            Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text("استهلاك الشبكة", style = MaterialTheme.typography.labelSmall)
+        }
     }
 }
 
@@ -292,12 +296,14 @@ private fun Action(
     subtitle: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     modifier: Modifier
-) = GlassCard(modifier) {
-    Column(Modifier.padding(16.dp)) {
-        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-        Spacer(Modifier.height(10.dp))
-        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        Text(subtitle, style = MaterialTheme.typography.labelSmall)
+) {
+    GlassCard(modifier = modifier) {
+        Column(Modifier.padding(16.dp)) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.height(10.dp))
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(subtitle, style = MaterialTheme.typography.labelSmall)
+        }
     }
 }
 
@@ -309,7 +315,10 @@ private fun Section(modifier: Modifier, title: String, description: String) {
             Column(Modifier.padding(20.dp)) {
                 Text(description, style = MaterialTheme.typography.bodyLarge)
                 Spacer(Modifier.height(14.dp))
-                Button(onClick = {}, modifier = Modifier.fillMaxWidth()) {
+                Button(
+                    onClick = {},
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Text("سيتم تفعيل هذه الوحدة مع المحرك")
                 }
             }
