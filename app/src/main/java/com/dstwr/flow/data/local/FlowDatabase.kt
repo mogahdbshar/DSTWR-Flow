@@ -43,7 +43,9 @@ data class UsageSnapshotEntity(
 
 @Dao
 interface UsageSnapshotDao {
-    @Query("SELECT * FROM usage_snapshots WHERE startTime >= :since ORDER BY startTime DESC") suspend fun since(since: Long): List<UsageSnapshotEntity>
+    @Query("SELECT * FROM usage_snapshots WHERE startTime >= :since ORDER BY startTime ASC")
+    suspend fun since(since: Long): List<UsageSnapshotEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insert(snapshot: UsageSnapshotEntity)
     @Query("DELETE FROM usage_snapshots WHERE startTime < :before") suspend fun deleteBefore(before: Long)
 }
