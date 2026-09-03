@@ -2,11 +2,12 @@ package com.dstwr.flow.ui.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.NotificationsNone
@@ -24,8 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.dstwr.flow.MainActivity
-import com.dstwr.flow.ui.theme.*
+import com.dstwr.flow.ui.theme.GlassCard
 
 /** Settings surface kept free of Android permission implementation details. */
 @Composable
@@ -101,7 +101,7 @@ fun SettingsScreen(
 
 @Composable
 private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
-    com.dstwr.flow.ui.theme.GlassCard(content = content)
+    GlassCard(content = content)
 }
 
 @Composable
