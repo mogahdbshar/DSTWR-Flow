@@ -5,11 +5,13 @@ import android.net.VpnService
 import com.dstwr.flow.data.apps.AppInventoryRepository
 import com.dstwr.flow.data.apps.AppPolicyRepository
 import com.dstwr.flow.data.local.FlowDatabaseProvider
+import com.dstwr.flow.data.settings.FlowSettingsRepository
 import com.dstwr.flow.data.usage.UsageStatsRepository
 import com.dstwr.flow.data.usage.UsageWindowRepository
 import com.dstwr.flow.domain.policy.AppPolicyRuntimeCoordinator
 import com.dstwr.flow.domain.policy.RuntimeApp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
 /**
@@ -24,10 +26,14 @@ class VpnPolicyEngine(private val context: Context) {
     private val database = FlowDatabaseProvider.get(context)
     private val inventory = AppInventoryRepository(context)
     private val policyRepository = AppPolicyRepository(database)
+    private val settings = FlowSettingsRepository(context.applicationContext)
     private val runtime = AppPolicyRuntimeCoordinator(
         policyRepository = policyRepository,
         usageWindowRepository = UsageWindowRepository(UsageStatsRepository(context))
     )
+
+    suspend fun currentEmergencyState(): Boolean =
+        settings.emergencyBlockEnabled.first()
 
     suspend fun activeBlockedPackages(emergencyBlock: Boolean): List<String> = withContext(Dispatchers.IO) {
         if (emergencyBlock) {
