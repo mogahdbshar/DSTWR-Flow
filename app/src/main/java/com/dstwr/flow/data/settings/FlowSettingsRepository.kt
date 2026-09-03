@@ -9,11 +9,12 @@ import kotlinx.coroutines.flow.map
 
 private val Context.flowSettingsDataStore by preferencesDataStore(name = "dstwr_flow_settings")
 
-/** Persists global protection settings locally on the device. */
+/** Persists global protection and notification preferences locally on the device. */
 class FlowSettingsRepository(private val context: Context) {
     private object Keys {
         val protectionEnabled = booleanPreferencesKey("protection_enabled")
         val emergencyBlockEnabled = booleanPreferencesKey("emergency_block_enabled")
+        val notificationsEnabled = booleanPreferencesKey("notifications_enabled")
     }
 
     val protectionEnabled: Flow<Boolean> = context.flowSettingsDataStore.data
@@ -22,12 +23,19 @@ class FlowSettingsRepository(private val context: Context) {
     val emergencyBlockEnabled: Flow<Boolean> = context.flowSettingsDataStore.data
         .map { it[Keys.emergencyBlockEnabled] ?: false }
 
+    val notificationsEnabled: Flow<Boolean> = context.flowSettingsDataStore.data
+        .map { it[Keys.notificationsEnabled] ?: true }
+
     suspend fun setProtectionEnabled(enabled: Boolean) {
         context.flowSettingsDataStore.edit { it[Keys.protectionEnabled] = enabled }
     }
 
     suspend fun setEmergencyBlockEnabled(enabled: Boolean) {
         context.flowSettingsDataStore.edit { it[Keys.emergencyBlockEnabled] = enabled }
+    }
+
+    suspend fun setNotificationsEnabled(enabled: Boolean) {
+        context.flowSettingsDataStore.edit { it[Keys.notificationsEnabled] = enabled }
     }
 
     suspend fun disableAllProtection() {
