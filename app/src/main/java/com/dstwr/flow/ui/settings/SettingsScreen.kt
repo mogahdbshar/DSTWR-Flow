@@ -1,5 +1,6 @@
 package com.dstwr.flow.ui.settings
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -15,6 +16,8 @@ import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -23,9 +26,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.dstwr.flow.ui.theme.GlassCard
 
 /** Settings surface kept free of Android permission implementation details. */
 @Composable
@@ -101,7 +104,14 @@ fun SettingsScreen(
 
 @Composable
 private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
-    GlassCard(content = content)
+    Card(
+        colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surface.copy(alpha = .84f)),
+        elevation = CardDefaults.cardElevation(0.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .12f)),
+        shape = MaterialTheme.shapes.large
+    ) {
+        Column(Modifier.fillMaxWidth().padding(18.dp), content = content)
+    }
 }
 
 @Composable
