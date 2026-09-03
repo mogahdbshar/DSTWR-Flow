@@ -1,9 +1,12 @@
 package com.dstwr.flow
 
+import android.Manifest
 import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.VpnService
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
@@ -64,6 +67,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.dstwr.flow.domain.util.DataFormatter
 import com.dstwr.flow.ui.apps.AppPolicyCard
@@ -72,6 +76,7 @@ import com.dstwr.flow.ui.apps.AppRow
 import com.dstwr.flow.ui.apps.AppsViewModel
 import com.dstwr.flow.ui.settings.FlowProtectionState
 import com.dstwr.flow.ui.settings.FlowSettingsViewModel
+import com.dstwr.flow.ui.settings.SettingsScreen
 import com.dstwr.flow.ui.stats.AppUsageRow
 import com.dstwr.flow.ui.stats.UsageHistoryPoint
 import com.dstwr.flow.ui.stats.UsageSummary
@@ -96,6 +101,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) settingsViewModel.setNotificationsEnabled(true)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         protectionController = FlowProtectionController(applicationContext)
@@ -105,9 +116,14 @@ class MainActivity : ComponentActivity() {
                 FlowApp(
                     hasUsageAccess = hasUsageAccess(),
                     protectionState = protectionState,
+                    vpnPrepared = protectionController.isPrepared(),
                     onOpenUsageAccess = { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) },
                     onProtectionChange = ::setProtection,
                     onEmergencyChange = ::setEmergency,
+                    onNotificationsChange = ::setNotifications,
+                    onRequestNotifications = ::requestNotificationPermission,
+                    onRequestVpnConsent = ::requestVpnConsent,
+                    onDisableAll = { lifecycleScope.launch { protectionController.disableProtection() } },
                     appsViewModel = appsViewModel,
                     usageViewModel = usageViewModel
                 )
@@ -140,18 +156,40 @@ class MainActivity : ComponentActivity() {
                 protectionController.disableProtection()
                 return@launch
             }
-            if (protectionController.isPrepared()) {
-                protectionController.enableProtection()
-            } else {
-                val intent = VpnService.prepare(this@MainActivity)
-                if (intent != null) vpnConsentLauncher.launch(intent)
-                else protectionController.enableProtection()
-            }
+            requestVpnConsent()
+        }
+    }
+
+    private fun requestVpnConsent() {
+        if (protectionController.isPrepared()) {
+            lifecycleScope.launch { protectionController.enableProtection() }
+        } else {
+            val intent = VpnService.prepare(this@MainActivity)
+            if (intent != null) vpnConsentLauncher.launch(intent)
+            else lifecycleScope.launch { protectionController.enableProtection() }
         }
     }
 
     private fun setEmergency(enabled: Boolean) {
         lifecycleScope.launch { protectionController.setEmergencyBlock(enabled) }
+    }
+
+    private fun setNotifications(enabled: Boolean) {
+        if (enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            settingsViewModel.setNotificationsEnabled(enabled)
+        }
+    }
+
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            settingsViewModel.setNotificationsEnabled(true)
+        }
     }
 }
 
@@ -160,15 +198,20 @@ class MainActivity : ComponentActivity() {
 private fun FlowApp(
     hasUsageAccess: Boolean,
     protectionState: FlowProtectionState,
+    vpnPrepared: Boolean,
     onOpenUsageAccess: () -> Unit,
     onProtectionChange: (Boolean) -> Unit,
     onEmergencyChange: (Boolean) -> Unit,
+    onNotificationsChange: (Boolean) -> Unit,
+    onRequestNotifications: () -> Unit,
+    onRequestVpnConsent: () -> Unit,
+    onDisableAll: () -> Unit,
     appsViewModel: AppsViewModel,
     usageViewModel: UsageViewModel
 ) {
     var tab by remember { mutableIntStateOf(0) }
     Scaffold(
-        topBar = { FlowTopBar() },
+        topBar = { FlowTopBar(onSettings = { tab = 3 }, onNotifications = { tab = 3 }) },
         bottomBar = {
             NavigationBar(Modifier.navigationBarsPadding()) {
                 listOf(
@@ -196,14 +239,26 @@ private fun FlowApp(
             )
             1 -> AppsScreen(Modifier.padding(padding), appsViewModel)
             2 -> StatsScreen(Modifier.padding(padding), hasUsageAccess, usageViewModel, onOpenUsageAccess)
-            else -> Section(Modifier.padding(padding), "المزيد", "الإعدادات واللغة والإشعارات والخصوصية والأذونات ومعلومات التطبيق.")
+            else -> SettingsScreen(
+                modifier = Modifier.padding(padding),
+                state = protectionState,
+                vpnPrepared = vpnPrepared,
+                usageAccessGranted = hasUsageAccess,
+                onProtectionChange = onProtectionChange,
+                onEmergencyChange = onEmergencyChange,
+                onNotificationsChange = onNotificationsChange,
+                onRequestNotifications = onRequestNotifications,
+                onOpenUsageAccess = onOpenUsageAccess,
+                onRequestVpnConsent = onRequestVpnConsent,
+                onDisableAll = onDisableAll
+            )
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FlowTopBar() {
+private fun FlowTopBar(onSettings: () -> Unit, onNotifications: () -> Unit) {
     TopAppBar(
         title = {
             Column {
@@ -220,8 +275,8 @@ private fun FlowTopBar() {
             }
         },
         actions = {
-            IconButton({}) { Icon(Icons.Default.NotificationsNone, "الإشعارات") }
-            IconButton({}) { Icon(Icons.Default.Settings, "الإعدادات") }
+            IconButton(onClick = onNotifications) { Icon(Icons.Default.NotificationsNone, "الإشعارات") }
+            IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "الإعدادات") }
         }
     )
 }
@@ -455,20 +510,6 @@ private fun Metric(title: String, value: String, modifier: Modifier) {
             Spacer(Modifier.height(8.dp))
             Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Text("استهلاك الشبكة", style = MaterialTheme.typography.labelSmall)
-        }
-    }
-}
-
-@Composable
-private fun Section(modifier: Modifier, title: String, description: String) {
-    Column(modifier.fillMaxSize().padding(20.dp), Arrangement.spacedBy(14.dp)) {
-        Text(title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        GlassCard {
-            Column(Modifier.padding(20.dp)) {
-                Text(description, style = MaterialTheme.typography.bodyLarge)
-                Spacer(Modifier.height(14.dp))
-                Button({}, Modifier.fillMaxWidth()) { Text("سيتم تفعيل هذه الوحدة مع المحرك") }
-            }
         }
     }
 }
