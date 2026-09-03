@@ -10,10 +10,11 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-/** Exposes persistent global protection state to Compose. */
+/** Exposes persistent global protection and notification state to Compose. */
 data class FlowProtectionState(
     val protectionEnabled: Boolean = false,
-    val emergencyBlockEnabled: Boolean = false
+    val emergencyBlockEnabled: Boolean = false,
+    val notificationsEnabled: Boolean = true
 )
 
 class FlowSettingsViewModel(application: Application) : AndroidViewModel(application) {
@@ -21,9 +22,14 @@ class FlowSettingsViewModel(application: Application) : AndroidViewModel(applica
 
     val state: StateFlow<FlowProtectionState> = combine(
         repository.protectionEnabled,
-        repository.emergencyBlockEnabled
-    ) { protection, emergency ->
-        FlowProtectionState(protectionEnabled = protection, emergencyBlockEnabled = emergency)
+        repository.emergencyBlockEnabled,
+        repository.notificationsEnabled
+    ) { protection, emergency, notifications ->
+        FlowProtectionState(
+            protectionEnabled = protection,
+            emergencyBlockEnabled = emergency,
+            notificationsEnabled = notifications
+        )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
@@ -39,6 +45,12 @@ class FlowSettingsViewModel(application: Application) : AndroidViewModel(applica
     fun setEmergencyBlockEnabled(enabled: Boolean) {
         viewModelScope.launch {
             repository.setEmergencyBlockEnabled(enabled)
+        }
+    }
+
+    fun setNotificationsEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.setNotificationsEnabled(enabled)
         }
     }
 
