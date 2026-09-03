@@ -11,18 +11,24 @@ import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.io.FileInputStream
 
 /**
  * Local VPN lifecycle and blocking policy controller.
  *
  * This phase implements deliberate blocking, not a full VPN proxy. Active
  * blocked apps are routed into the local tunnel with no upstream forwarding.
+ * Packets arriving at the tunnel are drained and discarded so the TUN buffer
+ * cannot fill indefinitely.
  */
 class FlowVpnService : VpnService() {
     private var vpnInterface: ParcelFileDescriptor? = null
+    private var drainJob: Job? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var policyEngine: VpnPolicyEngine
 
@@ -54,6 +60,7 @@ class FlowVpnService : VpnService() {
     override fun onBind(intent: Intent): IBinder? = super.onBind(intent)
 
     override fun onDestroy() {
+        stopTunnelReader()
         vpnInterface?.close()
         vpnInterface = null
         serviceScope.cancel()
@@ -68,12 +75,18 @@ class FlowVpnService : VpnService() {
                 return
             }
 
+            stopTunnelReader()
             vpnInterface?.close()
             vpnInterface = policyEngine
                 .buildBlockingTunnel(blockedPackages, emergencyBlock)
                 .establish()
 
-            if (vpnInterface == null) stopVpn()
+            if (vpnInterface == null) {
+                stopVpn()
+                return
+            }
+
+            startTunnelReader(vpnInterface!!)
         } catch (_: SecurityException) {
             stopVpn()
         } catch (_: IllegalStateException) {
@@ -81,7 +94,31 @@ class FlowVpnService : VpnService() {
         }
     }
 
+    private fun startTunnelReader(interfaceFd: ParcelFileDescriptor) {
+        stopTunnelReader()
+        drainJob = serviceScope.launch {
+            val input = FileInputStream(interfaceFd.fileDescriptor)
+            val buffer = ByteArray(BUFFER_SIZE)
+            try {
+                while (isActive) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                }
+            } catch (_: Exception) {
+                if (isActive) stopVpn()
+            } finally {
+                runCatching { input.close() }
+            }
+        }
+    }
+
+    private fun stopTunnelReader() {
+        drainJob?.cancel()
+        drainJob = null
+    }
+
     private fun stopVpn() {
+        stopTunnelReader()
         vpnInterface?.close()
         vpnInterface = null
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -122,5 +159,6 @@ class FlowVpnService : VpnService() {
         const val EXTRA_EMERGENCY = "emergency_block"
         private const val CHANNEL_ID = "dstwr_flow_service"
         private const val NOTIFICATION_ID = 7101
+        private const val BUFFER_SIZE = 32767
     }
 }
