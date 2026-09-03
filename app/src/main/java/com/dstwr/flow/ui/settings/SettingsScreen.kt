@@ -30,7 +30,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
-/** Settings surface kept free of Android permission implementation details. */
 @Composable
 fun SettingsScreen(
     modifier: Modifier = Modifier,
@@ -46,9 +45,7 @@ fun SettingsScreen(
     onDisableAll: () -> Unit
 ) {
     Column(
-        modifier = modifier
-            .navigationBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+        modifier = modifier.navigationBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text("الإعدادات", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
@@ -65,11 +62,7 @@ fun SettingsScreen(
             Icon(Icons.Default.NotificationsNone, null, tint = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.height(8.dp))
             SettingSwitchRow("تنبيهات الحصص", "تنبيه عند الاقتراب من الحصة أو بلوغها", state.notificationsEnabled, onNotificationsChange)
-            if (!state.notificationsEnabled) {
-                OutlinedButton(onRequestNotifications, Modifier.fillMaxWidth()) {
-                    Text("تفعيل إشعارات النظام")
-                }
-            }
+            if (!state.notificationsEnabled) OutlinedButton(onRequestNotifications, Modifier.fillMaxWidth()) { Text("تفعيل إشعارات النظام") }
         }
 
         SettingsCard {
@@ -80,12 +73,8 @@ fun SettingsScreen(
             Text(if (vpnPrepared) "VPN: جاهز" else "VPN: يحتاج موافقة النظام", style = MaterialTheme.typography.bodyMedium)
             Text(if (usageAccessGranted) "Usage Access: مفعّل" else "Usage Access: غير مفعّل", style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.height(10.dp))
-            if (!vpnPrepared) {
-                OutlinedButton(onRequestVpnConsent, Modifier.fillMaxWidth()) { Text("منح صلاحية VPN") }
-            }
-            if (!usageAccessGranted) {
-                OutlinedButton(onOpenUsageAccess, Modifier.fillMaxWidth()) { Text("فتح صلاحية إحصائيات الاستخدام") }
-            }
+            if (!vpnPrepared) OutlinedButton(onRequestVpnConsent, Modifier.fillMaxWidth()) { Text("منح صلاحية VPN") }
+            if (!usageAccessGranted) OutlinedButton(onOpenUsageAccess, Modifier.fillMaxWidth()) { Text("فتح صلاحية إحصائيات الاستخدام") }
         }
 
         SettingsCard {
@@ -115,12 +104,7 @@ private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
 }
 
 @Composable
-private fun SettingSwitchRow(
-    title: String,
-    description: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
+private fun SettingSwitchRow(title: String, description: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(title, fontWeight = FontWeight.SemiBold)
