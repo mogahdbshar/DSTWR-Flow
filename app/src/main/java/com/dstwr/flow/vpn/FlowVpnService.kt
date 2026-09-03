@@ -23,12 +23,12 @@ import java.io.FileInputStream
  *
  * This phase implements deliberate blocking, not a full VPN proxy. Active
  * blocked apps are routed into the local tunnel with no upstream forwarding.
- * Packets arriving at the tunnel are drained and discarded so the TUN buffer
- * cannot fill indefinitely.
+ * Packets arriving at the tunnel are drained and discarded.
  */
 class FlowVpnService : VpnService() {
     private var vpnInterface: ParcelFileDescriptor? = null
     private var drainJob: Job? = null
+    private var applyJob: Job? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var policyEngine: VpnPolicyEngine
 
@@ -51,7 +51,8 @@ class FlowVpnService : VpnService() {
         startForeground(NOTIFICATION_ID, buildNotification())
         val emergencyBlock = intent?.getBooleanExtra(EXTRA_EMERGENCY, false) == true
 
-        serviceScope.launch {
+        applyJob?.cancel()
+        applyJob = serviceScope.launch {
             applyPolicy(emergencyBlock)
         }
         return START_STICKY
@@ -60,9 +61,10 @@ class FlowVpnService : VpnService() {
     override fun onBind(intent: Intent): IBinder? = super.onBind(intent)
 
     override fun onDestroy() {
+        applyJob?.cancel()
+        applyJob = null
         stopTunnelReader()
-        vpnInterface?.close()
-        vpnInterface = null
+        closeVpnInterface()
         serviceScope.cancel()
         super.onDestroy()
     }
@@ -76,17 +78,19 @@ class FlowVpnService : VpnService() {
             }
 
             stopTunnelReader()
-            vpnInterface?.close()
-            vpnInterface = policyEngine
+            closeVpnInterface()
+
+            val established = policyEngine
                 .buildBlockingTunnel(blockedPackages, emergencyBlock)
                 .establish()
 
-            if (vpnInterface == null) {
+            if (established == null) {
                 stopVpn()
                 return
             }
 
-            startTunnelReader(vpnInterface!!)
+            vpnInterface = established
+            startTunnelReader(established)
         } catch (_: SecurityException) {
             stopVpn()
         } catch (_: IllegalStateException) {
@@ -97,17 +101,16 @@ class FlowVpnService : VpnService() {
     private fun startTunnelReader(interfaceFd: ParcelFileDescriptor) {
         stopTunnelReader()
         drainJob = serviceScope.launch {
-            val input = FileInputStream(interfaceFd.fileDescriptor)
-            val buffer = ByteArray(BUFFER_SIZE)
-            try {
-                while (isActive) {
-                    val count = input.read(buffer)
-                    if (count < 0) break
+            FileInputStream(interfaceFd.fileDescriptor).use { input ->
+                val buffer = ByteArray(BUFFER_SIZE)
+                try {
+                    while (isActive) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                    }
+                } catch (_: Exception) {
+                    if (isActive) stopVpn()
                 }
-            } catch (_: Exception) {
-                if (isActive) stopVpn()
-            } finally {
-                runCatching { input.close() }
             }
         }
     }
@@ -117,10 +120,16 @@ class FlowVpnService : VpnService() {
         drainJob = null
     }
 
-    private fun stopVpn() {
-        stopTunnelReader()
+    private fun closeVpnInterface() {
         vpnInterface?.close()
         vpnInterface = null
+    }
+
+    private fun stopVpn() {
+        applyJob?.cancel()
+        applyJob = null
+        stopTunnelReader()
+        closeVpnInterface()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             stopForeground(STOP_FOREGROUND_REMOVE)
         } else {
