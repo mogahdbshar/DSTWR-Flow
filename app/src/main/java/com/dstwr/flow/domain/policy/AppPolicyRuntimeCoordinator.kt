@@ -3,6 +3,8 @@ package com.dstwr.flow.domain.policy
 import com.dstwr.flow.data.apps.AppPolicyRepository
 import com.dstwr.flow.data.usage.AppUsage
 import com.dstwr.flow.data.usage.UsageWindowRepository
+import com.dstwr.flow.data.usage.UsageWindowResult
+import com.dstwr.flow.domain.model.AppPolicy
 
 /** Coordinates persisted policies, current time and Android usage counters. */
 class AppPolicyRuntimeCoordinator(
@@ -27,7 +29,7 @@ class AppPolicyRuntimeCoordinator(
                 rxBytes = 0L,
                 txBytes = 0L
             )
-            UsageWindowRepository.UsageWindowResult(daily = empty, monthly = empty)
+            UsageWindowResult(daily = empty, monthly = empty)
         }
         val policyUsage = PolicyUsage.from(usage.daily, usage.monthly)
         val decision = evaluator.evaluate(
@@ -47,7 +49,7 @@ class AppPolicyRuntimeCoordinator(
         evaluate(app.packageName, app.uid, emergencyBlock, nowMillis)
     }
 
-    private fun com.dstwr.flow.domain.model.AppPolicy?.needsUsageCounters(): Boolean =
+    private fun AppPolicy?.needsUsageCounters(): Boolean =
         this != null && (dailyQuotaBytes > 0L || monthlyQuotaBytes > 0L)
 }
 
