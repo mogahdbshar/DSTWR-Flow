@@ -33,13 +33,15 @@ class FlowNotificationHelper(context: Context) {
         appLabel: String,
         usedBytes: Long,
         quotaBytes: Long,
-        percent: Int
+        percent: Int,
+        period: Period = Period.DAILY
     ) {
         if (!canNotify() || quotaBytes <= 0L) return
         val safePercent = percent.coerceIn(0, 100)
+        val periodLabel = if (period == Period.DAILY) "اليومية" else "الشهرية"
         val notification = NotificationCompat.Builder(appContext, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_notify_more)
-            .setContentTitle("اقتراب حصة الشبكة")
+            .setContentTitle("اقتراب الحصة $periodLabel")
             .setContentText("$appLabel استخدم ${safePercent}% من الحصة المحددة")
             .setStyle(
                 NotificationCompat.BigTextStyle().bigText(
@@ -49,18 +51,20 @@ class FlowNotificationHelper(context: Context) {
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .build()
-        manager.notify(notificationId(packageName, TYPE_WARNING), notification)
+        manager.notify(notificationId(packageName, TYPE_WARNING, period), notification)
     }
 
     fun notifyQuotaReached(
         packageName: String,
         appLabel: String,
-        quotaBytes: Long
+        quotaBytes: Long,
+        period: Period = Period.DAILY
     ) {
         if (!canNotify() || quotaBytes <= 0L) return
+        val periodLabel = if (period == Period.DAILY) "اليومية" else "الشهرية"
         val notification = NotificationCompat.Builder(appContext, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_notify_more)
-            .setContentTitle("تم بلوغ حصة الشبكة")
+            .setContentTitle("تم بلوغ الحصة $periodLabel")
             .setContentText("تم إيقاف اتصال $appLabel بسبب بلوغ الحصة")
             .setStyle(
                 NotificationCompat.BigTextStyle().bigText(
@@ -70,12 +74,14 @@ class FlowNotificationHelper(context: Context) {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .build()
-        manager.notify(notificationId(packageName, TYPE_REACHED), notification)
+        manager.notify(notificationId(packageName, TYPE_REACHED, period), notification)
     }
 
     fun cancelForPackage(packageName: String) {
-        manager.cancel(notificationId(packageName, TYPE_WARNING))
-        manager.cancel(notificationId(packageName, TYPE_REACHED))
+        Period.entries.forEach { period ->
+            manager.cancel(notificationId(packageName, TYPE_WARNING, period))
+            manager.cancel(notificationId(packageName, TYPE_REACHED, period))
+        }
     }
 
     private fun canNotify(): Boolean =
@@ -85,8 +91,8 @@ class FlowNotificationHelper(context: Context) {
                 Manifest.permission.POST_NOTIFICATIONS
             ) == PackageManager.PERMISSION_GRANTED
 
-    private fun notificationId(packageName: String, type: Int): Int =
-        20_000_000 + (packageName.hashCode() and 0x00FF_FFFF) * 2 + type
+    private fun notificationId(packageName: String, type: Int, period: Period): Int =
+        20_000_000 + ((packageName.hashCode() and 0x00FF_FFFF) * 8) + (type * 2) + period.code
 
     private fun formatBytes(value: Long): String {
         val safe = value.coerceAtLeast(0L)
@@ -98,6 +104,11 @@ class FlowNotificationHelper(context: Context) {
             index++
         }
         return if (index == 0) "${safe} B" else "%.1f %s".format(number, units[index])
+    }
+
+    enum class Period(val code: Int) {
+        DAILY(1),
+        MONTHLY(2)
     }
 
     companion object {
