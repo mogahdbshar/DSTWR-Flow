@@ -111,7 +111,8 @@ class FlowVpnService : VpnService() {
                         notificationHelper.notifyQuotaReached(
                             alert.packageName,
                             alert.appLabel,
-                            alert.dailyQuotaBytes
+                            alert.dailyQuotaBytes,
+                            FlowNotificationHelper.Period.DAILY
                         )
                     }
                 } else if (alert.dailyPercent >= 80) {
@@ -123,7 +124,8 @@ class FlowVpnService : VpnService() {
                             alert.appLabel,
                             alert.dailyUsedBytes,
                             alert.dailyQuotaBytes,
-                            alert.dailyPercent
+                            alert.dailyPercent,
+                            FlowNotificationHelper.Period.DAILY
                         )
                     }
                 }
@@ -135,7 +137,8 @@ class FlowVpnService : VpnService() {
                         notificationHelper.notifyQuotaReached(
                             alert.packageName,
                             alert.appLabel,
-                            alert.monthlyQuotaBytes
+                            alert.monthlyQuotaBytes,
+                            FlowNotificationHelper.Period.MONTHLY
                         )
                     }
                 } else if (alert.monthlyPercent >= 80) {
@@ -147,7 +150,8 @@ class FlowVpnService : VpnService() {
                             alert.appLabel,
                             alert.monthlyUsedBytes,
                             alert.monthlyQuotaBytes,
-                            alert.monthlyPercent
+                            alert.monthlyPercent,
+                            FlowNotificationHelper.Period.MONTHLY
                         )
                     }
                 }
