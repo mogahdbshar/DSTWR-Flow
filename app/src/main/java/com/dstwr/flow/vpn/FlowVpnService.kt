@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
+import com.dstwr.flow.data.notifications.FlowNotificationHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -36,12 +37,16 @@ class FlowVpnService : VpnService() {
     private var monitorJob: Job? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var policyEngine: VpnPolicyEngine
+    private lateinit var notificationHelper: FlowNotificationHelper
+    private val warnedQuotaKeys = mutableSetOf<String>()
+    private val reachedQuotaKeys = mutableSetOf<String>()
     private var lastBlockedPackages: Set<String>? = null
     private var lastEmergencyBlock: Boolean? = null
 
     override fun onCreate() {
         super.onCreate()
         policyEngine = VpnPolicyEngine(applicationContext)
+        notificationHelper = FlowNotificationHelper(applicationContext)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -75,6 +80,8 @@ class FlowVpnService : VpnService() {
         monitorJob = null
         stopTunnelReader()
         closeVpnInterface()
+        warnedQuotaKeys.clear()
+        reachedQuotaKeys.clear()
         serviceScope.cancel()
         super.onDestroy()
     }
@@ -88,8 +95,67 @@ class FlowVpnService : VpnService() {
                 val emergency = policyEngine.currentEmergencyState()
                 applyJob?.cancel()
                 applyJob = launch { applyPolicy(emergency, force = false) }
+                runCatching { checkQuotaNotifications() }
             }
         }
+    }
+
+    private suspend fun checkQuotaNotifications() {
+        val activeKeys = mutableSetOf<String>()
+        if (policyEngine.notificationsEnabled()) {
+            policyEngine.quotaAlerts().forEach { alert ->
+                if (alert.dailyReached) {
+                    val key = "${alert.packageName}:daily"
+                    activeKeys += key
+                    if (reachedQuotaKeys.add(key)) {
+                        notificationHelper.notifyQuotaReached(
+                            alert.packageName,
+                            alert.appLabel,
+                            alert.dailyQuotaBytes
+                        )
+                    }
+                } else if (alert.dailyPercent >= 80) {
+                    val key = "${alert.packageName}:daily"
+                    activeKeys += key
+                    if (warnedQuotaKeys.add(key)) {
+                        notificationHelper.notifyQuotaWarning(
+                            alert.packageName,
+                            alert.appLabel,
+                            alert.dailyUsedBytes,
+                            alert.dailyQuotaBytes,
+                            alert.dailyPercent
+                        )
+                    }
+                }
+
+                if (alert.monthlyReached) {
+                    val key = "${alert.packageName}:monthly"
+                    activeKeys += key
+                    if (reachedQuotaKeys.add(key)) {
+                        notificationHelper.notifyQuotaReached(
+                            alert.packageName,
+                            alert.appLabel,
+                            alert.monthlyQuotaBytes
+                        )
+                    }
+                } else if (alert.monthlyPercent >= 80) {
+                    val key = "${alert.packageName}:monthly"
+                    activeKeys += key
+                    if (warnedQuotaKeys.add(key)) {
+                        notificationHelper.notifyQuotaWarning(
+                            alert.packageName,
+                            alert.appLabel,
+                            alert.monthlyUsedBytes,
+                            alert.monthlyQuotaBytes,
+                            alert.monthlyPercent
+                        )
+                    }
+                }
+            }
+        }
+
+        warnedQuotaKeys.retainAll(activeKeys)
+        reachedQuotaKeys.retainAll(activeKeys)
     }
 
     private suspend fun applyPolicy(emergencyBlock: Boolean, force: Boolean) {
@@ -170,6 +236,8 @@ class FlowVpnService : VpnService() {
         monitorJob = null
         lastBlockedPackages = null
         lastEmergencyBlock = null
+        warnedQuotaKeys.clear()
+        reachedQuotaKeys.clear()
         stopTunnelOnly()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             stopForeground(STOP_FOREGROUND_REMOVE)
