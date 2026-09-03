@@ -21,7 +21,13 @@ class AppPolicyRuntimeCoordinator(
         val usage = if (policy.needsUsageCounters()) {
             usageWindowRepository.queryCurrentWindows(uid, nowMillis)
         } else {
-            UsageWindowRepository.emptyResult(uid = uid, packageName = packageName)
+            val empty = AppUsage(
+                uid = uid,
+                packageName = packageName,
+                rxBytes = 0L,
+                txBytes = 0L
+            )
+            UsageWindowRepository.UsageWindowResult(daily = empty, monthly = empty)
         }
         val policyUsage = PolicyUsage.from(usage.daily, usage.monthly)
         val decision = evaluator.evaluate(
