@@ -5,8 +5,8 @@ import android.net.VpnService
 import com.dstwr.flow.data.apps.AppInventoryRepository
 import com.dstwr.flow.data.apps.AppPolicyRepository
 import com.dstwr.flow.data.local.FlowDatabaseProvider
-import com.dstwr.flow.data.usage.UsageWindowRepository
 import com.dstwr.flow.data.usage.UsageStatsRepository
+import com.dstwr.flow.data.usage.UsageWindowRepository
 import com.dstwr.flow.domain.policy.AppPolicyRuntimeCoordinator
 import com.dstwr.flow.domain.policy.RuntimeApp
 import kotlinx.coroutines.Dispatchers
@@ -23,27 +23,41 @@ import kotlinx.coroutines.withContext
 class VpnPolicyEngine(private val context: Context) {
     private val database = FlowDatabaseProvider.get(context)
     private val inventory = AppInventoryRepository(context)
+    private val policyRepository = AppPolicyRepository(database)
     private val runtime = AppPolicyRuntimeCoordinator(
-        policyRepository = AppPolicyRepository(database),
+        policyRepository = policyRepository,
         usageWindowRepository = UsageWindowRepository(UsageStatsRepository(context))
     )
 
-    /**
-     * Evaluates persisted policies against the current time and usage counters.
-     * The result contains only applications that should be blocked now.
-     */
     suspend fun activeBlockedPackages(emergencyBlock: Boolean): List<String> = withContext(Dispatchers.IO) {
-        if (emergencyBlock) return@withContext inventory.getLaunchableApps().map { it.packageName }
+        if (emergencyBlock) {
+            return@withContext inventory.getLaunchableApps().map { it.packageName }
+        }
 
-        val apps = inventory.getLaunchableApps().map { RuntimeApp(it.packageName, it.uid) }
-        runtime.evaluateAll(apps, emergencyBlock)
+        val persistedPolicies = policyRepository.getAll()
+            .associateBy { it.packageName }
+
+        if (persistedPolicies.isEmpty()) return@withContext emptyList()
+
+        val installedByPackage = inventory.getLaunchableApps()
+            .associateBy { it.packageName }
+
+        val candidates = persistedPolicies.values.mapNotNull { policy ->
+            installedByPackage[policy.packageName]?.let { app ->
+                RuntimeApp(app.packageName, app.uid)
+            }
+        }
+
+        if (candidates.isEmpty()) return@withContext emptyList()
+
+        runtime.evaluateAll(candidates, emergencyBlock = false)
             .filter { it.decision.blocked }
             .map { it.packageName }
+            .distinct()
     }
 
-    /** Backward-compatible manual-policy query for callers that need it. */
     suspend fun blockedPackages(): List<String> = withContext(Dispatchers.IO) {
-        database.appPolicyDao().getAll()
+        policyRepository.getAll()
             .filter { it.blocked }
             .map { it.packageName }
     }
@@ -57,6 +71,8 @@ class VpnPolicyEngine(private val context: Context) {
             .setMtu(1500)
             .addAddress("10.10.0.2", 32)
             .addRoute("0.0.0.0", 0)
+            .addAddress("fd00:dstwr:flow::2", 128)
+            .addRoute("::", 0)
 
         if (!emergencyBlock) {
             blockedPackages.forEach { packageName ->
