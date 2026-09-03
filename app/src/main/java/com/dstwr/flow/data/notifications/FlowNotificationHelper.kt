@@ -8,7 +8,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
-import com.dstwr.flow.R
 
 /** Creates local, low-noise notifications for policy events. */
 class FlowNotificationHelper(context: Context) {
@@ -39,7 +38,7 @@ class FlowNotificationHelper(context: Context) {
         if (!canNotify() || quotaBytes <= 0L) return
         val safePercent = percent.coerceIn(0, 100)
         val notification = NotificationCompat.Builder(appContext, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_stat_flow)
+            .setSmallIcon(android.R.drawable.stat_notify_more)
             .setContentTitle("اقتراب حصة الشبكة")
             .setContentText("$appLabel استخدم ${safePercent}% من الحصة المحددة")
             .setStyle(
@@ -60,7 +59,7 @@ class FlowNotificationHelper(context: Context) {
     ) {
         if (!canNotify() || quotaBytes <= 0L) return
         val notification = NotificationCompat.Builder(appContext, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_stat_flow)
+            .setSmallIcon(android.R.drawable.stat_notify_more)
             .setContentTitle("تم بلوغ حصة الشبكة")
             .setContentText("تم إيقاف اتصال $appLabel بسبب بلوغ الحصة")
             .setStyle(
