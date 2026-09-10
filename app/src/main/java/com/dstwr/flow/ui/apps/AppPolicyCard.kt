@@ -1,5 +1,6 @@
 package com.dstwr.flow.ui.apps
 
+import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,14 +9,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -35,25 +34,18 @@ fun AppPolicyCard(
     val hasSpeedLimit = row.policy.downloadLimitBytesPerSecond > 0L || row.policy.uploadLimitBytesPerSecond > 0L
     val hasQuota = row.policy.dailyQuotaBytes > 0L || row.policy.monthlyQuotaBytes > 0L
     val hasSchedule = row.policy.scheduleEnabled
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     GlassCardForApps {
         Row(
             Modifier.padding(16.dp),
             verticalAlignment = Alignment.Top
         ) {
-            Surface(
-                Modifier.size(46.dp),
-                MaterialTheme.shapes.medium,
-                if (row.blocked) MaterialTheme.colorScheme.error.copy(alpha = .12f)
-                else MaterialTheme.colorScheme.primary.copy(alpha = .10f)
-            ) {
-                Icon(
-                    if (row.blocked) Icons.Default.Block else Icons.Default.Apps,
-                    null,
-                    Modifier.padding(11.dp),
-                    if (row.blocked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                )
-            }
+            AppIcon(
+                context = context,
+                packageName = row.app.packageName,
+                modifier = Modifier.size(46.dp)
+            )
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(row.app.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
