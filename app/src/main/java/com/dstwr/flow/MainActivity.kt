@@ -13,80 +13,23 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Analytics
-import androidx.compose.material.icons.filled.Apps
-import androidx.compose.material.icons.filled.Block
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.MoreHoriz
-import androidx.compose.material.icons.filled.NetworkCheck
-import androidx.compose.material.icons.filled.NotificationsNone
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material3.Button
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontWeight
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.dstwr.flow.domain.util.DataFormatter
-import com.dstwr.flow.ui.apps.AppIcon
-import com.dstwr.flow.ui.apps.AppPolicyCard
-import com.dstwr.flow.ui.apps.AppPolicyEditor
-import com.dstwr.flow.ui.apps.AppRow
-import com.dstwr.flow.ui.apps.AppsViewModel
-import com.dstwr.flow.ui.apps.AppFilterMode
-import com.dstwr.flow.ui.settings.FlowProtectionState
-import com.dstwr.flow.ui.settings.FlowSettingsViewModel
-import com.dstwr.flow.ui.settings.SettingsScreen
-import com.dstwr.flow.ui.stats.AppUsageRow
-import com.dstwr.flow.ui.stats.UsageHistoryPoint
-import com.dstwr.flow.ui.stats.UsageSummary
-import com.dstwr.flow.ui.stats.UsageViewModel
+import com.dstwr.flow.ui.apps.*
+import com.dstwr.flow.ui.settings.*
+import com.dstwr.flow.ui.stats.*
 import com.dstwr.flow.ui.theme.DSTWRFlowTheme
 import com.dstwr.flow.vpn.FlowProtectionController
 import kotlinx.coroutines.launch
@@ -96,33 +39,38 @@ class MainActivity : ComponentActivity() {
     private val usageViewModel: UsageViewModel by viewModels()
     private val settingsViewModel: FlowSettingsViewModel by viewModels()
     private lateinit var protectionController: FlowProtectionController
+    private var usageAccessState by mutableStateOf(false)
+    private var vpnPreparedState by mutableStateOf(false)
 
     private val vpnConsentLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) lifecycleScope.launch { protectionController.enableProtection() }
         else settingsViewModel.setProtectionEnabled(false)
+        refreshPermissionState()
     }
 
     private val notificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) settingsViewModel.setNotificationsEnabled(true)
+        refreshPermissionState()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         protectionController = FlowProtectionController(applicationContext)
+        refreshPermissionState()
         setContent {
             DSTWRFlowTheme {
                 val protectionState by settingsViewModel.state.collectAsState()
                 FlowApp(
-                    hasUsageAccess = hasUsageAccess(),
+                    hasUsageAccess = usageAccessState,
                     protectionState = protectionState,
-                    vpnPrepared = protectionController.isPrepared(),
+                    vpnPrepared = vpnPreparedState,
                     onOpenUsageAccess = { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) },
                     onProtectionChange = ::setProtection,
                     onEmergencyChange = ::setEmergency,
                     onNotificationsChange = ::setNotifications,
                     onRequestNotifications = ::requestNotificationPermission,
                     onRequestVpnConsent = ::requestVpnConsent,
-                    onDisableAll = { lifecycleScope.launch { protectionController.disableProtection() } },
+                    onDisableAll = { lifecycleScope.launch { protectionController.disableProtection(); refreshPermissionState() } },
                     appsViewModel = appsViewModel,
                     usageViewModel = usageViewModel
                 )
@@ -132,9 +80,15 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        refreshPermissionState()
         appsViewModel.refresh()
         usageViewModel.refresh()
         if (::protectionController.isInitialized) lifecycleScope.launch { protectionController.reapply() }
+    }
+
+    private fun refreshPermissionState() {
+        usageAccessState = hasUsageAccess()
+        vpnPreparedState = if (::protectionController.isInitialized) protectionController.isPrepared() else VpnService.prepare(this) == null
     }
 
     private fun hasUsageAccess(): Boolean {
@@ -146,19 +100,20 @@ class MainActivity : ComponentActivity() {
     private fun setProtection(enabled: Boolean) {
         lifecycleScope.launch {
             if (!enabled) protectionController.disableProtection() else requestVpnConsent()
+            refreshPermissionState()
         }
     }
 
     private fun requestVpnConsent() {
-        if (protectionController.isPrepared()) lifecycleScope.launch { protectionController.enableProtection() }
+        if (protectionController.isPrepared()) lifecycleScope.launch { protectionController.enableProtection(); refreshPermissionState() }
         else {
             val intent = VpnService.prepare(this@MainActivity)
             if (intent != null) vpnConsentLauncher.launch(intent)
-            else lifecycleScope.launch { protectionController.enableProtection() }
+            else lifecycleScope.launch { protectionController.enableProtection(); refreshPermissionState() }
         }
     }
 
-    private fun setEmergency(enabled: Boolean) { lifecycleScope.launch { protectionController.setEmergencyBlock(enabled) } }
+    private fun setEmergency(enabled: Boolean) { lifecycleScope.launch { protectionController.setEmergencyBlock(enabled); refreshPermissionState() } }
 
     private fun setNotifications(enabled: Boolean) {
         if (enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -176,10 +131,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun FlowApp(hasUsageAccess: Boolean, protectionState: FlowProtectionState, vpnPrepared: Boolean, onOpenUsageAccess: () -> Unit, onProtectionChange: (Boolean) -> Unit, onEmergencyChange: (Boolean) -> Unit, onNotificationsChange: (Boolean) -> Unit, onRequestNotifications: () -> Unit, onRequestVpnConsent: () -> Unit, onDisableAll: () -> Unit, appsViewModel: AppsViewModel, usageViewModel: UsageViewModel) {
     var tab by remember { mutableIntStateOf(0) }
-    Scaffold(
-        topBar = { FlowTopBar(onSettings = { tab = 3 }, onNotifications = { tab = 3 }) },
-        bottomBar = { NavigationBar(Modifier.navigationBarsPadding()) { listOf(Triple("الرئيسية", Icons.Default.NetworkCheck, 0), Triple("التطبيقات", Icons.Default.Apps, 1), Triple("الإحصائيات", Icons.Default.Analytics, 2), Triple("المزيد", Icons.Default.MoreHoriz, 3)).forEach { item -> NavigationBarItem(selected = tab == item.third, onClick = { tab = item.third }, icon = { Icon(item.second, item.first) }, label = { Text(item.first) }) } } }
-    ) { padding ->
+    Scaffold(topBar = { FlowTopBar(onSettings = { tab = 3 }, onNotifications = { tab = 3 }) }, bottomBar = { NavigationBar(Modifier.navigationBarsPadding()) { listOf(Triple("الرئيسية", Icons.Default.NetworkCheck, 0), Triple("التطبيقات", Icons.Default.Apps, 1), Triple("الإحصائيات", Icons.Default.Analytics, 2), Triple("المزيد", Icons.Default.MoreHoriz, 3)).forEach { item -> NavigationBarItem(selected = tab == item.third, onClick = { tab = item.third }, icon = { Icon(item.second, item.first) }, label = { Text(item.first) }) } } }) { padding ->
         when (tab) {
             0 -> Dashboard(Modifier.padding(padding), protectionState, hasUsageAccess, usageViewModel.today.collectAsState().value, usageViewModel.month.collectAsState().value, onProtectionChange, onEmergencyChange, onOpenUsageAccess)
             1 -> AppsScreen(Modifier.padding(padding), appsViewModel)
@@ -221,49 +173,4 @@ private fun Dashboard(modifier: Modifier, protectionState: FlowProtectionState, 
         item { GlassCard { Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Block, null, tint = if (protectionState.emergencyBlockEnabled) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary); Spacer(Modifier.width(10.dp)); Column(Modifier.weight(1f)) { Text("قاطع الإنترنت", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold); Text("يحظر اتصال التطبيقات عبر نفق VPN محلي عند تفعيل الحماية.", style = MaterialTheme.typography.bodySmall) }; Switch(protectionState.emergencyBlockEnabled, onEmergency) } } }
         item { GlassCard { Column(Modifier.padding(18.dp)) { Text("إحصائيات الاستخدام", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold); Text(if (usageGranted) "تمت قراءة بيانات الجهاز" else "مطلوبة لقراءة استهلاك التطبيقات", style = MaterialTheme.typography.bodySmall); if (!usageGranted) { Spacer(Modifier.height(10.dp)); OutlinedButton(onUsage, Modifier.fillMaxWidth()) { Text("فتح إعدادات الصلاحية") } } } } }
     }
-}
-
-@Composable
-private fun StatsScreen(modifier: Modifier, usageGranted: Boolean, viewModel: UsageViewModel, onUsage: () -> Unit) {
-    val today by viewModel.today.collectAsState(); val week by viewModel.week.collectAsState(); val month by viewModel.month.collectAsState(); val history by viewModel.history.collectAsState(); val loading by viewModel.loading.collectAsState(); var period by remember { mutableIntStateOf(0) }; val selected = when (period) { 0 -> today; 1 -> week; else -> month }
-    LazyColumn(modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp)) {
-        item { GlassCard(MaterialTheme.colorScheme.primary.copy(alpha = .10f)) { Column(Modifier.padding(20.dp)) { Text("الإحصائيات", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold); Text("بيانات مقروءة من عدادات Android الرسمية", style = MaterialTheme.typography.bodySmall); if (!usageGranted) { Spacer(Modifier.height(10.dp)); OutlinedButton(onUsage, Modifier.fillMaxWidth()) { Text("منح صلاحية Usage Access") } } } } }
-        item { Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(8.dp)) { listOf("اليوم", "الأسبوع", "الشهر").forEachIndexed { index, title -> OutlinedButton({ period = index }, Modifier.weight(1f)) { Text(if (period == index) "• $title" else title) } } } }
-        item { PeriodCard(if (period == 0) "اليوم" else if (period == 1) "هذا الأسبوع" else "هذا الشهر", selected) }
-        item { HistoryCard(history) }
-        item { GlassCard { Column(Modifier.padding(18.dp)) { Text("أكثر التطبيقات استهلاكًا", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold); Spacer(Modifier.height(8.dp)); if (selected.topApps.isEmpty()) Text("لا توجد بيانات استهلاك متاحة بعد.") else selected.topApps.forEach { TopAppRow(it) } } } }
-        item { if (loading) Text("جارٍ تحديث الإحصائيات...") }
-        item { OutlinedButton(viewModel::refresh, Modifier.fillMaxWidth()) { Text("تحديث البيانات") } }
-    }
-}
-
-@Composable
-private fun HistoryCard(points: List<UsageHistoryPoint>) {
-    GlassCard { Column(Modifier.padding(18.dp)) { Text("سجل آخر القراءات", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold); Spacer(Modifier.height(12.dp)); if (points.isEmpty()) Text("سيظهر الرسم بعد تسجيل أول قراءات الاستخدام.", style = MaterialTheme.typography.bodySmall) else { val max = points.maxOfOrNull { it.totalBytes }?.coerceAtLeast(1L) ?: 1L; Row(Modifier.fillMaxWidth().height(150.dp), horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.Bottom) { points.takeLast(24).forEach { point -> val fraction = (point.totalBytes.toDouble() / max).toFloat().coerceIn(.03f, 1f); Box(Modifier.weight(1f).fillMaxHeight(fraction).background(MaterialTheme.colorScheme.primary.copy(alpha = .65f))) } }; Spacer(Modifier.height(8.dp)); Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) { Text("الأقدم", style = MaterialTheme.typography.labelSmall); Text("الأحدث", style = MaterialTheme.typography.labelSmall) } } } }
-}
-
-@Composable
-private fun PeriodCard(title: String, summary: UsageSummary) {
-    GlassCard { Column(Modifier.padding(18.dp)) { Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold); Spacer(Modifier.height(8.dp)); Text(DataFormatter.bytes(summary.total.totalBytes), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold); Spacer(Modifier.height(8.dp)); Text("Wi-Fi: ${DataFormatter.bytes(summary.wifi)}"); Text("بيانات الجوال: ${DataFormatter.bytes(summary.mobile)}"); Text("التطبيقات ذات الاستهلاك: ${summary.appCount}") } }
-}
-
-@Composable
-private fun TopAppRow(row: AppUsageRow) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        AppIcon(context = context, packageName = row.app.packageName, modifier = Modifier.size(38.dp))
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) { Text(row.app.label, fontWeight = FontWeight.SemiBold); Text(row.app.packageName, style = MaterialTheme.typography.labelSmall) }
-        Text(DataFormatter.bytes(row.usage.totalBytes), fontWeight = FontWeight.Bold)
-    }
-}
-
-@Composable
-private fun Metric(title: String, value: String, modifier: Modifier) {
-    GlassCard(modifier = modifier) { Column(Modifier.padding(16.dp)) { Text(title, style = MaterialTheme.typography.labelLarge); Spacer(Modifier.height(8.dp)); Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold); Text("استهلاك الشبكة", style = MaterialTheme.typography.labelSmall) } }
-}
-
-@Composable
-private fun GlassCard(containerColor: Color = MaterialTheme.colorScheme.surface.copy(alpha = .84f), modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    androidx.compose.material3.Card(modifier = modifier, colors = CardDefaults.cardColors(containerColor), elevation = CardDefaults.cardElevation(0.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .12f)), shape = MaterialTheme.shapes.large, content = content)
 }
