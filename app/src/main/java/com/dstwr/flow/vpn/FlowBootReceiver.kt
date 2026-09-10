@@ -22,6 +22,7 @@ class FlowBootReceiver : BroadcastReceiver() {
             try {
                 val settings = FlowSettingsRepository(appContext)
                 if (!settings.protectionEnabled.first()) return@launch
+
                 if (!VpnControlController(appContext).isPrepared()) {
                     settings.setProtectionEnabled(false)
                     settings.setEmergencyBlockEnabled(false)
@@ -34,7 +35,14 @@ class FlowBootReceiver : BroadcastReceiver() {
                         settings.emergencyBlockEnabled.first()
                     )
                 }
-                ContextCompat.startForegroundService(appContext, serviceIntent)
+
+                runCatching {
+                    ContextCompat.startForegroundService(appContext, serviceIntent)
+                }.onFailure {
+                    // Android may reject foreground-service startup from boot on some versions.
+                    // Keep the saved preference disabled rather than leaving a false active state.
+                    settings.disableAllProtection()
+                }
             } finally {
                 pendingResult.finish()
             }
