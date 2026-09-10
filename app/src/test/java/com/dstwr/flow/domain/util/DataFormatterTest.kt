@@ -16,10 +16,12 @@ class DataFormatterTest {
     @Test
     fun preservesNegativeByteValue() {
         assertEquals("-1 B", DataFormatter.bytes(-1L))
+        assertEquals("-1.0 KB", DataFormatter.bytes(-1024L))
     }
 
     @Test
     fun formatsRateUsingBytesFormatter() {
         assertEquals("1.0 KB/s", DataFormatter.rate(1024L))
+        assertEquals("2.0 KB/s", DataFormatter.rate(2048L))
     }
 }
