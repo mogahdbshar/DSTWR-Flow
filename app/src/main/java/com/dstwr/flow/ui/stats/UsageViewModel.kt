@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.dstwr.flow.data.apps.AppInventoryRepository
 import com.dstwr.flow.data.apps.InstalledApp
 import com.dstwr.flow.data.local.FlowDatabaseProvider
+import com.dstwr.flow.data.local.UsageSnapshotEntity
 import com.dstwr.flow.data.usage.AppUsage
 import com.dstwr.flow.data.usage.UsageSnapshotRepository
 import com.dstwr.flow.data.usage.UsageStatsRepository
@@ -72,12 +73,30 @@ class UsageViewModel(application: Application) : AndroidViewModel(application) {
         return UsageSummary(total, total.wifiBytes, total.mobileBytes, rows.count { it.usage.totalBytes > 0L }, rows.sortedByDescending { it.usage.totalBytes }.take(5))
     }
 
-    private fun buildHistory(rows: List<com.dstwr.flow.data.local.UsageSnapshotEntity>): List<UsageHistoryPoint> =
-        rows.groupBy { it.startTime }.map { (time, entries) ->
-            val wifi = entries.filter { it.networkType == UsageSnapshotRepository.NETWORK_WIFI }.sumOf { it.rxBytes + it.txBytes }
-            val mobile = entries.filter { it.networkType == UsageSnapshotRepository.NETWORK_MOBILE }.sumOf { it.rxBytes + it.txBytes }
-            UsageHistoryPoint(time, wifi, mobile, wifi + mobile)
-        }.sortedBy { it.time }.takeLast(48)
+    private fun buildHistory(rows: List<UsageSnapshotEntity>): List<UsageHistoryPoint> {
+        val cumulative = rows.groupBy { it.startTime }
+            .map { (time, entries) ->
+                val wifi = entries.filter { it.networkType == UsageSnapshotRepository.NETWORK_WIFI }
+                    .sumOf { it.rxBytes + it.txBytes }
+                val mobile = entries.filter { it.networkType == UsageSnapshotRepository.NETWORK_MOBILE }
+                    .sumOf { it.rxBytes + it.txBytes }
+                UsageHistoryPoint(time, wifi, mobile, wifi + mobile)
+            }
+            .sortedBy { it.time }
+
+        if (cumulative.size < 2) return emptyList()
+
+        return cumulative.zipWithNext { previous, current ->
+            val wifiDelta = (current.wifiBytes - previous.wifiBytes).coerceAtLeast(0L)
+            val mobileDelta = (current.mobileBytes - previous.mobileBytes).coerceAtLeast(0L)
+            UsageHistoryPoint(
+                time = current.time,
+                wifiBytes = wifiDelta,
+                mobileBytes = mobileDelta,
+                totalBytes = wifiDelta + mobileDelta
+            )
+        }.takeLast(48)
+    }
 
     private fun startOfDay(time: Long): Long = Calendar.getInstance().apply {
         timeInMillis = time
