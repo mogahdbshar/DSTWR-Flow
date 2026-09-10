@@ -82,20 +82,7 @@ class UsageViewModel(application: Application) : AndroidViewModel(application) {
                     .sumOf { it.rxBytes + it.txBytes }
                 UsageHistoryPoint(time, wifi, mobile, wifi + mobile)
             }
-            .sortedBy { it.time }
-
-        if (cumulative.size < 2) return emptyList()
-
-        return cumulative.zipWithNext { previous, current ->
-            val wifiDelta = (current.wifiBytes - previous.wifiBytes).coerceAtLeast(0L)
-            val mobileDelta = (current.mobileBytes - previous.mobileBytes).coerceAtLeast(0L)
-            UsageHistoryPoint(
-                time = current.time,
-                wifiBytes = wifiDelta,
-                mobileBytes = mobileDelta,
-                totalBytes = wifiDelta + mobileDelta
-            )
-        }.takeLast(48)
+        return UsageHistoryCalculator.toIntervals(cumulative).takeLast(48)
     }
 
     private fun startOfDay(time: Long): Long = Calendar.getInstance().apply {
