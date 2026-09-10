@@ -36,25 +36,28 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.material.icons.filled.NotificationsNone
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -74,6 +77,7 @@ import com.dstwr.flow.ui.apps.AppPolicyCard
 import com.dstwr.flow.ui.apps.AppPolicyEditor
 import com.dstwr.flow.ui.apps.AppRow
 import com.dstwr.flow.ui.apps.AppsViewModel
+import com.dstwr.flow.ui.apps.AppFilterMode
 import com.dstwr.flow.ui.settings.FlowProtectionState
 import com.dstwr.flow.ui.settings.FlowSettingsViewModel
 import com.dstwr.flow.ui.settings.SettingsScreen
@@ -283,8 +287,11 @@ private fun FlowTopBar(onSettings: () -> Unit, onNotifications: () -> Unit) {
 
 @Composable
 private fun AppsScreen(modifier: Modifier, viewModel: AppsViewModel) {
-    val apps by viewModel.apps.collectAsState()
+    val apps by viewModel.visibleApps.collectAsState()
+    val allApps by viewModel.apps.collectAsState()
     val loading by viewModel.loading.collectAsState()
+    val query by viewModel.searchQuery.collectAsState()
+    val filterMode by viewModel.filterMode.collectAsState()
     var selectedApp by remember { mutableStateOf<AppRow?>(null) }
 
     Box(modifier.fillMaxSize()) {
@@ -298,11 +305,71 @@ private fun AppsScreen(modifier: Modifier, viewModel: AppsViewModel) {
                     Column(Modifier.padding(18.dp)) {
                         Text("تطبيقات الجهاز", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(6.dp))
-                        Text("اضغط على أي تطبيق لفتح إعدادات الحظر والحصص والجدولة وسرعات الشبكة.", style = MaterialTheme.typography.bodySmall)
+                        Text("ابحث عن تطبيق وحدد القواعد التي تريد تطبيقها عليه.", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
+            item {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = viewModel::setSearchQuery,
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    leadingIcon = { Icon(Icons.Default.Search, null) },
+                    trailingIcon = {
+                        if (query.isNotEmpty()) {
+                            IconButton(onClick = { viewModel.setSearchQuery("") }) {
+                                Icon(Icons.Default.Clear, "مسح البحث")
+                            }
+                        }
+                    },
+                    label = { Text("البحث") },
+                    placeholder = { Text("اسم التطبيق أو اسم الحزمة") }
+                )
+            }
+            item {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = filterMode == AppFilterMode.ALL,
+                        onClick = { viewModel.setFilterMode(AppFilterMode.ALL) },
+                        label = { Text("الكل") }
+                    )
+                    FilterChip(
+                        selected = filterMode == AppFilterMode.BLOCKED,
+                        onClick = { viewModel.setFilterMode(AppFilterMode.BLOCKED) },
+                        label = { Text("المحظورة") }
+                    )
+                    FilterChip(
+                        selected = filterMode == AppFilterMode.CONFIGURED,
+                        onClick = { viewModel.setFilterMode(AppFilterMode.CONFIGURED) },
+                        label = { Text("المضبوطة") }
+                    )
+                }
+            }
+            item {
+                Text(
+                    if (query.isBlank() && filterMode == AppFilterMode.ALL) {
+                        "${allApps.size} تطبيق"
+                    } else {
+                        "${apps.size} من ${allApps.size} تطبيق"
+                    },
+                    style = MaterialTheme.typography.labelMedium
+                )
+            }
             if (loading) item { GlassCard { Text("جارٍ تحديث التطبيقات...", Modifier.padding(18.dp)) } }
+            if (!loading && apps.isEmpty()) {
+                item {
+                    GlassCard {
+                        Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.Apps, null, Modifier.size(42.dp), MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.height(10.dp))
+                            Text("لا توجد تطبيقات مطابقة", fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(4.dp))
+                            Text("جرّب تغيير البحث أو الفلتر.", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
             items(apps, key = { it.app.packageName }) { row ->
                 AppPolicyCard(
                     row = row,
