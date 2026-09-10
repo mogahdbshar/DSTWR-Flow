@@ -20,6 +20,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.Calendar
 
 data class AppRow(
@@ -41,6 +43,7 @@ class AppsViewModel(application: Application) : AndroidViewModel(application) {
     private val policyRepository = AppPolicyRepository(FlowDatabaseProvider.get(application))
     private val usageRepository = UsageStatsRepository(application)
     private val protectionController = FlowProtectionController(application)
+    private val policyWriteMutex = Mutex()
 
     private val _apps = MutableStateFlow<List<AppRow>>(emptyList())
     val apps: StateFlow<List<AppRow>> = _apps.asStateFlow()
@@ -146,51 +149,53 @@ class AppsViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun updatePolicy(packageName: String, transform: AppPolicy.() -> AppPolicy) {
         viewModelScope.launch(Dispatchers.IO) {
-            val current = _apps.value.firstOrNull { it.app.packageName == packageName }?.policy
-                ?: policyRepository.get(packageName)
-                ?: AppPolicy(packageName = packageName)
-            val updated = transform(current)
+            policyWriteMutex.withLock {
+                val current = _apps.value.firstOrNull { it.app.packageName == packageName }?.policy
+                    ?: policyRepository.get(packageName)
+                    ?: AppPolicy(packageName = packageName)
+                val updated = transform(current)
 
-            if (updated.blocked != current.blocked) {
-                policyRepository.setBlocked(packageName, updated.blocked)
-            }
-            if (updated.downloadLimitBytesPerSecond != current.downloadLimitBytesPerSecond ||
-                updated.uploadLimitBytesPerSecond != current.uploadLimitBytesPerSecond
-            ) {
-                policyRepository.setSpeedLimits(
-                    packageName,
-                    updated.downloadLimitBytesPerSecond,
-                    updated.uploadLimitBytesPerSecond
-                )
-            }
-            if (updated.dailyQuotaBytes != current.dailyQuotaBytes ||
-                updated.monthlyQuotaBytes != current.monthlyQuotaBytes
-            ) {
-                policyRepository.setQuotas(
-                    packageName,
-                    updated.dailyQuotaBytes,
-                    updated.monthlyQuotaBytes
-                )
-            }
-            if (updated.scheduleEnabled != current.scheduleEnabled ||
-                updated.scheduleStartMinutes != current.scheduleStartMinutes ||
-                updated.scheduleEndMinutes != current.scheduleEndMinutes
-            ) {
-                policyRepository.setSchedule(
-                    packageName,
-                    updated.scheduleEnabled,
-                    updated.scheduleStartMinutes,
-                    updated.scheduleEndMinutes
-                )
-            }
-            if (updated.networkScope != current.networkScope) {
-                policyRepository.setNetworkScope(packageName, updated.networkScope)
-            }
+                if (updated.blocked != current.blocked) {
+                    policyRepository.setBlocked(packageName, updated.blocked)
+                }
+                if (updated.downloadLimitBytesPerSecond != current.downloadLimitBytesPerSecond ||
+                    updated.uploadLimitBytesPerSecond != current.uploadLimitBytesPerSecond
+                ) {
+                    policyRepository.setSpeedLimits(
+                        packageName,
+                        updated.downloadLimitBytesPerSecond,
+                        updated.uploadLimitBytesPerSecond
+                    )
+                }
+                if (updated.dailyQuotaBytes != current.dailyQuotaBytes ||
+                    updated.monthlyQuotaBytes != current.monthlyQuotaBytes
+                ) {
+                    policyRepository.setQuotas(
+                        packageName,
+                        updated.dailyQuotaBytes,
+                        updated.monthlyQuotaBytes
+                    )
+                }
+                if (updated.scheduleEnabled != current.scheduleEnabled ||
+                    updated.scheduleStartMinutes != current.scheduleStartMinutes ||
+                    updated.scheduleEndMinutes != current.scheduleEndMinutes
+                ) {
+                    policyRepository.setSchedule(
+                        packageName,
+                        updated.scheduleEnabled,
+                        updated.scheduleStartMinutes,
+                        updated.scheduleEndMinutes
+                    )
+                }
+                if (updated.networkScope != current.networkScope) {
+                    policyRepository.setNetworkScope(packageName, updated.networkScope)
+                }
 
-            _apps.value = _apps.value.map { row ->
-                if (row.app.packageName == packageName) row.copy(policy = updated) else row
+                _apps.value = _apps.value.map { row ->
+                    if (row.app.packageName == packageName) row.copy(policy = updated) else row
+                }
+                runCatching { protectionController.reapply() }
             }
-            runCatching { protectionController.reapply() }
         }
     }
 
