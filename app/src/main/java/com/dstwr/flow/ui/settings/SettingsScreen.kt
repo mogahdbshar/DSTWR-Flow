@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -25,7 +26,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -45,6 +51,8 @@ fun SettingsScreen(
     onRequestVpnConsent: () -> Unit,
     onDisableAll: () -> Unit
 ) {
+    var showDisableConfirmation by remember { mutableStateOf(false) }
+
     LazyColumn(
         modifier = modifier
             .navigationBarsPadding()
@@ -83,7 +91,7 @@ fun SettingsScreen(
                 Text("الصلاحيات", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(6.dp))
                 Text(if (vpnPrepared) "VPN: جاهز" else "VPN: يحتاج موافقة النظام", style = MaterialTheme.typography.bodyMedium)
-                Text(if (usageAccessGranted) "Usage Access: مفعّل" else "Usage Access: غير مفعّل", style = MaterialTheme.typography.bodyMedium)
+                Text(if (usageAccessGranted) "إحصائيات الاستخدام: مفعّلة" else "إحصائيات الاستخدام: غير مفعّلة", style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(10.dp))
                 if (!vpnPrepared) OutlinedButton(onRequestVpnConsent, Modifier.fillMaxWidth()) { Text("منح صلاحية VPN") }
                 if (!usageAccessGranted) OutlinedButton(onOpenUsageAccess, Modifier.fillMaxWidth()) { Text("فتح صلاحية إحصائيات الاستخدام") }
@@ -97,12 +105,29 @@ fun SettingsScreen(
                 Spacer(Modifier.height(6.dp))
                 Text("DSTWR Flow لا يحتاج خادمًا خارجيًا لعمل الحماية الحالية. سياسات التطبيقات وإعداداتك محفوظة محليًا.", style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(10.dp))
-                Button(onDisableAll, Modifier.fillMaxWidth()) { Text("إيقاف كل الحماية") }
+                Button(onClick = { showDisableConfirmation = true }, Modifier.fillMaxWidth()) { Text("إيقاف كل الحماية") }
             }
         }
         item {
             Text("DSTWR Flow 1.0.0", style = MaterialTheme.typography.labelMedium, modifier = Modifier.fillMaxWidth().padding(top = 4.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         }
+    }
+
+    if (showDisableConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showDisableConfirmation = false },
+            title = { Text("إيقاف كل الحماية؟") },
+            text = { Text("سيتم إيقاف الحماية وقاطع الإنترنت وتعطيل حالة الطوارئ. لن يتم حذف سياسات التطبيقات المحفوظة.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDisableConfirmation = false
+                    onDisableAll()
+                }) { Text("إيقاف الحماية") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDisableConfirmation = false }) { Text("إلغاء") }
+            }
+        )
     }
 }
 
