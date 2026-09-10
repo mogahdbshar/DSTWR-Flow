@@ -16,10 +16,18 @@ class FlowProtectionController(context: Context) {
             settings.setEmergencyBlockEnabled(false)
             return false
         }
-        settings.setProtectionEnabled(true)
-        val emergency = settings.emergencyBlockEnabled.first()
-        vpn.start(emergencyBlock = emergency)
-        return true
+
+        return runCatching {
+            settings.setProtectionEnabled(true)
+            val emergency = settings.emergencyBlockEnabled.first()
+            vpn.start(emergencyBlock = emergency)
+            true
+        }.getOrElse {
+            settings.setProtectionEnabled(false)
+            settings.setEmergencyBlockEnabled(false)
+            vpn.stop()
+            false
+        }
     }
 
     suspend fun disableProtection() {
@@ -39,27 +47,43 @@ class FlowProtectionController(context: Context) {
             return false
         }
 
-        settings.setEmergencyBlockEnabled(enabled)
-        if (!protection) {
-            vpn.stop()
-            return true
+        return runCatching {
+            settings.setEmergencyBlockEnabled(enabled)
+            if (!protection) {
+                vpn.stop()
+            } else {
+                vpn.start(emergencyBlock = enabled)
+            }
+            true
+        }.getOrElse {
+            settings.setEmergencyBlockEnabled(false)
+            false
         }
-
-        vpn.start(emergencyBlock = enabled)
-        return true
     }
 
     suspend fun reapply() {
         val protection = settings.protectionEnabled.first()
         val emergency = settings.emergencyBlockEnabled.first()
-        if (!protection || !vpn.isPrepared()) {
-            if (!protection) {
-                if (emergency) settings.setEmergencyBlockEnabled(false)
-                vpn.stop()
-            }
+
+        if (!protection) {
+            if (emergency) settings.setEmergencyBlockEnabled(false)
+            vpn.stop()
             return
         }
-        vpn.start(emergencyBlock = emergency)
+
+        if (!vpn.isPrepared()) {
+            settings.setProtectionEnabled(false)
+            settings.setEmergencyBlockEnabled(false)
+            vpn.stop()
+            return
+        }
+
+        runCatching { vpn.start(emergencyBlock = emergency) }
+            .onFailure {
+                settings.setProtectionEnabled(false)
+                settings.setEmergencyBlockEnabled(false)
+                vpn.stop()
+            }
     }
 
     fun isPrepared(): Boolean = vpn.isPrepared()
