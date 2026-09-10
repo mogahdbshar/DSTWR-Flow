@@ -150,31 +150,43 @@ class AppsViewModel(application: Application) : AndroidViewModel(application) {
                 ?: policyRepository.get(packageName)
                 ?: AppPolicy(packageName = packageName)
             val updated = transform(current)
-            when {
-                updated.blocked != current.blocked ->
-                    policyRepository.setBlocked(packageName, updated.blocked)
-                updated.downloadLimitBytesPerSecond != current.downloadLimitBytesPerSecond ||
-                    updated.uploadLimitBytesPerSecond != current.uploadLimitBytesPerSecond ->
-                    policyRepository.setSpeedLimits(
-                        packageName,
-                        updated.downloadLimitBytesPerSecond,
-                        updated.uploadLimitBytesPerSecond
-                    )
-                updated.dailyQuotaBytes != current.dailyQuotaBytes ||
-                    updated.monthlyQuotaBytes != current.monthlyQuotaBytes ->
-                    policyRepository.setQuotas(packageName, updated.dailyQuotaBytes, updated.monthlyQuotaBytes)
-                updated.scheduleEnabled != current.scheduleEnabled ||
-                    updated.scheduleStartMinutes != current.scheduleStartMinutes ||
-                    updated.scheduleEndMinutes != current.scheduleEndMinutes ->
-                    policyRepository.setSchedule(
-                        packageName,
-                        updated.scheduleEnabled,
-                        updated.scheduleStartMinutes,
-                        updated.scheduleEndMinutes
-                    )
-                updated.networkScope != current.networkScope ->
-                    policyRepository.setNetworkScope(packageName, updated.networkScope)
+
+            if (updated.blocked != current.blocked) {
+                policyRepository.setBlocked(packageName, updated.blocked)
             }
+            if (updated.downloadLimitBytesPerSecond != current.downloadLimitBytesPerSecond ||
+                updated.uploadLimitBytesPerSecond != current.uploadLimitBytesPerSecond
+            ) {
+                policyRepository.setSpeedLimits(
+                    packageName,
+                    updated.downloadLimitBytesPerSecond,
+                    updated.uploadLimitBytesPerSecond
+                )
+            }
+            if (updated.dailyQuotaBytes != current.dailyQuotaBytes ||
+                updated.monthlyQuotaBytes != current.monthlyQuotaBytes
+            ) {
+                policyRepository.setQuotas(
+                    packageName,
+                    updated.dailyQuotaBytes,
+                    updated.monthlyQuotaBytes
+                )
+            }
+            if (updated.scheduleEnabled != current.scheduleEnabled ||
+                updated.scheduleStartMinutes != current.scheduleStartMinutes ||
+                updated.scheduleEndMinutes != current.scheduleEndMinutes
+            ) {
+                policyRepository.setSchedule(
+                    packageName,
+                    updated.scheduleEnabled,
+                    updated.scheduleStartMinutes,
+                    updated.scheduleEndMinutes
+                )
+            }
+            if (updated.networkScope != current.networkScope) {
+                policyRepository.setNetworkScope(packageName, updated.networkScope)
+            }
+
             _apps.value = _apps.value.map { row ->
                 if (row.app.packageName == packageName) row.copy(policy = updated) else row
             }
