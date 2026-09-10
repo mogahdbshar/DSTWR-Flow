@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.Icon
@@ -31,6 +32,10 @@ fun AppPolicyCard(
     onBlockedChange: (Boolean) -> Unit,
     onOpenDetails: () -> Unit
 ) {
+    val hasSpeedLimit = row.policy.downloadLimitBytesPerSecond > 0L || row.policy.uploadLimitBytesPerSecond > 0L
+    val hasQuota = row.policy.dailyQuotaBytes > 0L || row.policy.monthlyQuotaBytes > 0L
+    val hasSchedule = row.policy.scheduleEnabled
+
     GlassCardForApps {
         Row(
             Modifier.padding(16.dp),
@@ -53,8 +58,9 @@ fun AppPolicyCard(
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(row.app.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text(
-                    if (row.app.systemApp) "تطبيق نظام" else "تطبيق مستخدم",
-                    style = MaterialTheme.typography.labelSmall
+                    if (row.blocked) "محظور" else if (row.app.systemApp) "تطبيق نظام" else "تطبيق مستخدم",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (row.blocked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(row.app.packageName, style = MaterialTheme.typography.labelSmall)
                 Text(
@@ -67,19 +73,21 @@ fun AppPolicyCard(
                     style = MaterialTheme.typography.labelSmall
                 )
 
-                val hasSpeedLimit = row.policy.downloadLimitBytesPerSecond > 0L || row.policy.uploadLimitBytesPerSecond > 0L
-                val hasQuota = row.policy.dailyQuotaBytes > 0L || row.policy.monthlyQuotaBytes > 0L
-                if (hasSpeedLimit || hasQuota || row.policy.scheduleEnabled) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (hasSpeedLimit || hasQuota || hasSchedule) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         if (hasSpeedLimit) {
                             Icon(Icons.Default.Speed, null, Modifier.size(15.dp), MaterialTheme.colorScheme.primary)
-                            Text("سرعة محددة", style = MaterialTheme.typography.labelSmall)
+                            Text("سرعة", style = MaterialTheme.typography.labelSmall)
                         }
                         if (hasQuota) {
                             Icon(Icons.Default.Storage, null, Modifier.size(15.dp), MaterialTheme.colorScheme.primary)
-                            Text("حصة محددة", style = MaterialTheme.typography.labelSmall)
+                            Text("حصة", style = MaterialTheme.typography.labelSmall)
                         }
-                        if (row.policy.scheduleEnabled) {
+                        if (hasSchedule) {
+                            Icon(Icons.Default.Schedule, null, Modifier.size(15.dp), MaterialTheme.colorScheme.primary)
                             Text("مجدول", style = MaterialTheme.typography.labelSmall)
                         }
                     }
