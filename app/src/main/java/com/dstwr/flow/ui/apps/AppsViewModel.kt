@@ -14,8 +14,11 @@ import com.dstwr.flow.domain.model.NetworkScope
 import com.dstwr.flow.vpn.FlowProtectionController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
@@ -27,6 +30,12 @@ data class AppRow(
     val blocked: Boolean get() = policy.blocked
 }
 
+enum class AppFilterMode {
+    ALL,
+    BLOCKED,
+    CONFIGURED
+}
+
 class AppsViewModel(application: Application) : AndroidViewModel(application) {
     private val inventory = AppInventoryRepository(application)
     private val policyRepository = AppPolicyRepository(FlowDatabaseProvider.get(application))
@@ -36,11 +45,42 @@ class AppsViewModel(application: Application) : AndroidViewModel(application) {
     private val _apps = MutableStateFlow<List<AppRow>>(emptyList())
     val apps: StateFlow<List<AppRow>> = _apps.asStateFlow()
 
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    private val _filterMode = MutableStateFlow(AppFilterMode.ALL)
+    val filterMode: StateFlow<AppFilterMode> = _filterMode.asStateFlow()
+
+    val visibleApps: StateFlow<List<AppRow>> = combine(
+        _apps,
+        _searchQuery,
+        _filterMode
+    ) { rows, query, mode ->
+        AppListFilter.filter(
+            apps = rows,
+            query = query,
+            blockedOnly = mode == AppFilterMode.BLOCKED,
+            configuredOnly = mode == AppFilterMode.CONFIGURED
+        )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList()
+    )
+
     private val _loading = MutableStateFlow(false)
     val loading: StateFlow<Boolean> = _loading.asStateFlow()
 
     init {
         refresh()
+    }
+
+    fun setSearchQuery(query: String) {
+        _searchQuery.value = query
+    }
+
+    fun setFilterMode(mode: AppFilterMode) {
+        _filterMode.value = mode
     }
 
     fun refresh() {
