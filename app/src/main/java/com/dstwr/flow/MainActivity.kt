@@ -43,7 +43,6 @@ import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -96,18 +95,22 @@ class MainActivity : ComponentActivity() {
     private val usageViewModel: UsageViewModel by viewModels()
     private val settingsViewModel: FlowSettingsViewModel by viewModels()
     private lateinit var protectionController: FlowProtectionController
+
     private var usageAccessState by mutableStateOf(false)
     private var vpnPreparedState by mutableStateOf(false)
 
     private val vpnConsentLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == RESULT_OK) lifecycleScope.launch { protectionController.enableProtection() }
-        else settingsViewModel.setProtectionEnabled(false)
-        refreshPermissionState()
+        if (result.resultCode == RESULT_OK) {
+            refreshPermissionState()
+            lifecycleScope.launch { protectionController.enableProtection() }
+        } else {
+            settingsViewModel.setProtectionEnabled(false)
+            refreshPermissionState()
+        }
     }
 
     private val notificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) settingsViewModel.setNotificationsEnabled(true)
-        refreshPermissionState()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -156,8 +159,10 @@ class MainActivity : ComponentActivity() {
 
     private fun setProtection(enabled: Boolean) {
         lifecycleScope.launch {
-            if (!enabled) protectionController.disableProtection() else requestVpnConsent()
-            refreshPermissionState()
+            if (!enabled) {
+                protectionController.disableProtection()
+                refreshPermissionState()
+            } else requestVpnConsent()
         }
     }
 
@@ -170,7 +175,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun setEmergency(enabled: Boolean) { lifecycleScope.launch { protectionController.setEmergencyBlock(enabled); refreshPermissionState() } }
+    private fun setEmergency(enabled: Boolean) { lifecycleScope.launch { protectionController.setEmergencyBlock(enabled) } }
 
     private fun setNotifications(enabled: Boolean) {
         if (enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
