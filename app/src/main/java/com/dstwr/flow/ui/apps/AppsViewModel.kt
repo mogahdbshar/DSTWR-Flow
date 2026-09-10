@@ -74,6 +74,9 @@ class AppsViewModel(application: Application) : AndroidViewModel(application) {
     private val _loading = MutableStateFlow(false)
     val loading: StateFlow<Boolean> = _loading.asStateFlow()
 
+    private val _errorMessage = MutableStateFlow<String?>(null)
+    val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+
     init {
         refresh()
     }
@@ -86,9 +89,14 @@ class AppsViewModel(application: Application) : AndroidViewModel(application) {
         _filterMode.value = mode
     }
 
+    fun clearError() {
+        _errorMessage.value = null
+    }
+
     fun refresh() {
         viewModelScope.launch(Dispatchers.IO) {
             _loading.value = true
+            _errorMessage.value = null
             try {
                 val installed = inventory.getLaunchableApps()
                 val policies = policyRepository.getAll().associateBy { it.packageName }
@@ -105,6 +113,10 @@ class AppsViewModel(application: Application) : AndroidViewModel(application) {
                             ?: AppUsage(app.uid, app.packageName, 0L, 0L)
                     )
                 }
+            } catch (_: SecurityException) {
+                _errorMessage.value = "تعذر قراءة إحصائيات التطبيقات. تحقق من صلاحية إحصائيات الاستخدام."
+            } catch (_: Exception) {
+                _errorMessage.value = "تعذر تحديث قائمة التطبيقات حاليًا. حاول مرة أخرى."
             } finally {
                 _loading.value = false
             }
