@@ -13,6 +13,7 @@ class FlowProtectionController(context: Context) {
     suspend fun enableProtection(): Boolean {
         if (!vpn.isPrepared()) {
             settings.setProtectionEnabled(false)
+            settings.setEmergencyBlockEnabled(false)
             return false
         }
         settings.setProtectionEnabled(true)
@@ -31,9 +32,19 @@ class FlowProtectionController(context: Context) {
             settings.setEmergencyBlockEnabled(false)
             return false
         }
-        settings.setEmergencyBlockEnabled(enabled)
+
         val protection = settings.protectionEnabled.first()
-        if (!protection) return true
+        if (enabled && !protection) {
+            settings.setEmergencyBlockEnabled(false)
+            return false
+        }
+
+        settings.setEmergencyBlockEnabled(enabled)
+        if (!protection) {
+            vpn.stop()
+            return true
+        }
+
         vpn.start(emergencyBlock = enabled)
         return true
     }
@@ -42,7 +53,10 @@ class FlowProtectionController(context: Context) {
         val protection = settings.protectionEnabled.first()
         val emergency = settings.emergencyBlockEnabled.first()
         if (!protection || !vpn.isPrepared()) {
-            if (!protection) vpn.stop()
+            if (!protection) {
+                if (emergency) settings.setEmergencyBlockEnabled(false)
+                vpn.stop()
+            }
             return
         }
         vpn.start(emergencyBlock = emergency)
