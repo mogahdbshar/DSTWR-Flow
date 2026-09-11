@@ -12,9 +12,9 @@ class UidTrafficIdentityResolver(
     private val flows: TrafficFlowTable
 ) : TrafficIdentityResolver {
     override fun resolve(packet: ParsedPacket, direction: TrafficDirection): String? =
-        flows.find(packet)?.packageName
+        flows.find(packet.toFlowKey())?.packageName
 
     fun bind(packet: ParsedPacket, packageName: String) {
-        flows.bind(packet, packageName)
+        flows.bind(packet.toFlowKey(), packageName)
     }
 }
