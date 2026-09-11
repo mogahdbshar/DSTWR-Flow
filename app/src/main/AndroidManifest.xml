@@ -6,6 +6,7 @@
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
     </queries>
+
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
@@ -13,13 +14,14 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <application
         android:allowBackup="true"
-        android:icon="@drawable/ic_dstwr_flow"
-        android:roundIcon="@drawable/ic_dstwr_flow"
+        android:icon="@drawable/dstwr_flow_logo"
+        android:roundIcon="@drawable/dstwr_flow_logo"
         android:label="DSTWR Flow"
         android:supportsRtl="true"
-        android:theme="@style/Theme.DSTWRFlow">
+        android:theme="@style/Theme.DSTWRFlow.Starting">
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -28,6 +30,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
         <receiver
             android:name=".vpn.FlowBootReceiver"
             android:enabled="true"
@@ -36,6 +39,7 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
         <service
             android:name=".vpn.FlowVpnService"
             android:permission="android.permission.BIND_VPN_SERVICE"
