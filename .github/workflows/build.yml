@@ -8,6 +8,9 @@ permissions:
 
 env:
   GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx2g
+  ANDROID_NDK_VERSION: '27.2.12479018'
+
+auto_cancel: false
 
 jobs:
   build:
@@ -21,6 +24,22 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Set up Go 1.26
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.x'
+
+      - name: Set up Android SDK and NDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        run: |
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;${ANDROID_NDK_VERSION}"
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Build native forwarding engine
+        run: bash scripts/build_tun2socks_android.sh
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
