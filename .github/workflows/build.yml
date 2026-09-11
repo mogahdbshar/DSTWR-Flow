@@ -10,8 +10,6 @@ env:
   GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx2g
   ANDROID_NDK_VERSION: '27.2.12479018'
 
-auto_cancel: false
-
 jobs:
   build:
     runs-on: ubuntu-latest
