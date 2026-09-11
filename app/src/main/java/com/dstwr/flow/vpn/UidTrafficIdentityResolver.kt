@@ -1,18 +1,20 @@
 package com.dstwr.flow.vpn
 
 /**
- * Resolves an application from an already-known flow binding.
+ * Resolves a package only from a previously trusted flow binding.
+ * Android does not attach the originating package name to each TUN packet,
+ * so unresolved traffic remains unresolved rather than being guessed.
  *
- * The TUN packet itself does not contain an Android package name, so an
- * unresolved flow is deliberately returned as null instead of guessed.
+ * The historical class name is retained for source compatibility, but the
+ * implementation is flow-based, not UID-based.
  */
-class SessionTrafficIdentityResolver(
-    private val sessions: TrafficSessionTable
+class UidTrafficIdentityResolver(
+    private val flows: TrafficFlowTable
 ) : TrafficIdentityResolver {
     override fun resolve(packet: ParsedPacket, direction: TrafficDirection): String? =
-        sessions.resolve(packet.toFlowKey())
+        flows.find(packet)?.packageName
 
     fun bind(packet: ParsedPacket, packageName: String) {
-        sessions.bind(packet.toFlowKey(), packageName)
+        flows.bind(packet, packageName)
     }
 }
