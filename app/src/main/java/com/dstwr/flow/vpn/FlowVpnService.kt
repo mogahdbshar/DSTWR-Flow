@@ -152,7 +152,7 @@ class FlowVpnService : VpnService() {
                 speedLimits.configure(policy.packageName, policy.downloadLimitBytesPerSecond, policy.uploadLimitBytesPerSecond)
             }
 
-            val established = policyEngine.buildBlockingTunnel(managedPackages.toList(), emergencyBlock).establish() ?: run {
+            val established = policyEngine.buildBlockingTunnel(this, managedPackages.toList(), emergencyBlock).establish() ?: run {
                 stopVpn()
                 return
             }
@@ -174,9 +174,9 @@ class FlowVpnService : VpnService() {
         stopTrafficEngine()
         val input = FileInputStream(interfaceFd.fileDescriptor)
         val output = FileOutputStream(interfaceFd.fileDescriptor)
-        val identityResolver = ConnectionOwnerUidResolver(applicationContext, trafficPolicies)
+        val identityResolver = UidTrafficIdentityResolver(TrafficFlowTable())
         val decisionEngine = PacketDecisionEngine(ConnectionTracker(), speedLimits, trafficMeter, identityResolver, trafficPolicies)
-        val transport = UserSpaceForwardingTransport(this, serviceScope)
+        val transport = UserSpaceForwardingTransport(this, serviceScope) { packet -> output.write(packet); output.flush() }
         trafficEngine = TrafficEngine(serviceScope, input, output, transport, decisionEngine).also { it.start() }
     }
 
@@ -213,7 +213,7 @@ class FlowVpnService : VpnService() {
     }
 
     private fun buildNotification(): Notification = NotificationCompat.Builder(this, CHANNEL_ID)
-        .setSmallIcon(com.dstwr.flow.R.drawable.ic_dstwr_flow_notification)
+        .setSmallIcon(com.dstwr.flow.R.drawable.ic_dstwr_flow)
         .setContentTitle("DSTWR Flow")
         .setContentText("التحكم المحلي في الشبكة يعمل")
         .setOngoing(true)
