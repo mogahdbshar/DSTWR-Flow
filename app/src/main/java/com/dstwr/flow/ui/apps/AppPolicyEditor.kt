@@ -55,11 +55,7 @@ fun AppPolicyEditor(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(row.app.packageName, style = MaterialTheme.typography.labelSmall)
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                     Column(Modifier.weight(1f)) {
                         Text("حظر الإنترنت")
                         Text(if (blocked) "الاتصال محظور لهذا التطبيق" else "الاتصال مسموح")
@@ -72,14 +68,12 @@ fun AppPolicyEditor(
                 Button(onClick = { scopeMenu = true }) { Text(scopeLabel(scope)) }
                 DropdownMenu(expanded = scopeMenu, onDismissRequest = { scopeMenu = false }) {
                     NetworkScope.entries.forEach { item ->
-                        DropdownMenuItem(
-                            text = { Text(scopeLabel(item)) },
-                            onClick = { scope = item; scopeMenu = false }
-                        )
+                        DropdownMenuItem(text = { Text(scopeLabel(item)) }, onClick = { scope = item; scopeMenu = false })
                     }
                 }
 
                 Text("حدود السرعة", style = MaterialTheme.typography.titleSmall)
+                Text("يتم حفظ حدود السرعة ضمن سياسة التطبيق، بينما التنفيذ الفعلي لتحديد السرعة يحتاج محرك تمرير الحزم.", style = MaterialTheme.typography.labelSmall)
                 OutlinedTextField(
                     value = download,
                     onValueChange = { download = it.filter(Char::isDigit).take(10) },
@@ -98,29 +92,11 @@ fun AppPolicyEditor(
                 )
 
                 Text("حصص البيانات", style = MaterialTheme.typography.titleSmall)
-                OutlinedTextField(
-                    value = daily,
-                    onValueChange = { daily = it.filter(Char::isDigit).take(10) },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("الحصة اليومية، MB") },
-                    supportingText = { Text("بعد بلوغها يتم تطبيق الحظر") },
-                    singleLine = true
-                )
-                OutlinedTextField(
-                    value = monthly,
-                    onValueChange = { monthly = it.filter(Char::isDigit).take(10) },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("الحصة الشهرية، MB") },
-                    supportingText = { Text("0 = بدون حصة شهرية") },
-                    singleLine = true
-                )
+                OutlinedTextField(value = daily, onValueChange = { daily = it.filter(Char::isDigit).take(10) }, modifier = Modifier.fillMaxWidth(), label = { Text("الحصة اليومية، MB") }, supportingText = { Text("بعد بلوغها يتم تطبيق الحظر") }, singleLine = true)
+                OutlinedTextField(value = monthly, onValueChange = { monthly = it.filter(Char::isDigit).take(10) }, modifier = Modifier.fillMaxWidth(), label = { Text("الحصة الشهرية، MB") }, supportingText = { Text("0 = بدون حصة شهرية") }, singleLine = true)
 
                 Text("الجدولة", style = MaterialTheme.typography.titleSmall)
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                     Column(Modifier.weight(1f)) {
                         Text("تفعيل الجدولة")
                         Text("الحظر يعمل داخل الفترة المحددة", style = MaterialTheme.typography.bodySmall)
@@ -129,41 +105,22 @@ fun AppPolicyEditor(
                 }
                 if (schedule) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(
-                            value = start,
-                            onValueChange = { start = it.filter(Char::isDigit).take(4) },
-                            modifier = Modifier.weight(1f),
-                            label = { Text("البداية HHmm") },
-                            supportingText = { if (!validStart) Text("مثال: 2300") },
-                            singleLine = true,
-                            isError = !validStart
-                        )
-                        OutlinedTextField(
-                            value = end,
-                            onValueChange = { end = it.filter(Char::isDigit).take(4) },
-                            modifier = Modifier.weight(1f),
-                            label = { Text("النهاية HHmm") },
-                            supportingText = { if (!validEnd) Text("مثال: 0700") },
-                            singleLine = true,
-                            isError = !validEnd
-                        )
+                        OutlinedTextField(value = start, onValueChange = { start = it.filter(Char::isDigit).take(4) }, modifier = Modifier.weight(1f), label = { Text("البداية HHmm") }, supportingText = { if (!validStart) Text("مثال: 2300") }, singleLine = true, isError = !validStart)
+                        OutlinedTextField(value = end, onValueChange = { end = it.filter(Char::isDigit).take(4) }, modifier = Modifier.weight(1f), label = { Text("النهاية HHmm") }, supportingText = { if (!validEnd) Text("مثال: 0700") }, singleLine = true, isError = !validEnd)
                     }
                     Text("مثال: 2300 إلى 0700 يعمل عبر منتصف الليل.", style = MaterialTheme.typography.labelSmall)
                 }
             }
         },
         confirmButton = {
-            TextButton(
-                enabled = canSave,
-                onClick = {
-                    onBlockedChange(blocked)
-                    onSpeedLimitsChange(parseUnit(download, 1024L), parseUnit(upload, 1024L))
-                    onQuotasChange(parseUnit(daily, 1024L * 1024L), parseUnit(monthly, 1024L * 1024L))
-                    onScheduleChange(schedule, parseMinutes(start), parseMinutes(end))
-                    onNetworkScopeChange(scope)
-                    onDismiss()
-                }
-            ) { Text("حفظ") }
+            TextButton(enabled = canSave, onClick = {
+                onBlockedChange(blocked)
+                onSpeedLimitsChange(parseUnit(download, 1024L), parseUnit(upload, 1024L))
+                onQuotasChange(parseUnit(daily, 1024L * 1024L), parseUnit(monthly, 1024L * 1024L))
+                onScheduleChange(schedule, parseMinutes(start), parseMinutes(end))
+                onNetworkScopeChange(scope)
+                onDismiss()
+            }) { Text("حفظ") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } }
     )
