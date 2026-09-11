@@ -2,7 +2,6 @@ package com.dstwr.flow.vpn
 
 import android.content.Context
 import com.dstwr.flow.data.settings.FlowSettingsRepository
-import kotlinx.coroutines.flow.first
 
 /** Coordinates persisted protection state with the local VPN service. */
 class FlowProtectionController(context: Context) {
@@ -19,7 +18,7 @@ class FlowProtectionController(context: Context) {
 
         return runCatching {
             settings.setProtectionEnabled(true)
-            val emergency = settings.emergencyBlockEnabled.first()
+            val emergency = settings.isEmergencyBlockEnabled()
             vpn.start(emergencyBlock = emergency)
             true
         }.getOrElse {
@@ -41,7 +40,7 @@ class FlowProtectionController(context: Context) {
             return false
         }
 
-        val protection = settings.protectionEnabled.first()
+        val protection = settings.isProtectionEnabled()
         if (enabled && !protection) {
             settings.setEmergencyBlockEnabled(false)
             return false
@@ -62,8 +61,8 @@ class FlowProtectionController(context: Context) {
     }
 
     suspend fun reapply() {
-        val protection = settings.protectionEnabled.first()
-        val emergency = settings.emergencyBlockEnabled.first()
+        val protection = settings.isProtectionEnabled()
+        val emergency = settings.isEmergencyBlockEnabled()
 
         if (!protection) {
             if (emergency) settings.setEmergencyBlockEnabled(false)
