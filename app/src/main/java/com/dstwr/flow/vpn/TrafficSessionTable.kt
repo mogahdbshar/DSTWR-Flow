@@ -1,52 +1,24 @@
 package com.dstwr.flow.vpn
 
-import java.util.concurrent.ConcurrentHashMap
-
 /**
- * Bounded flow-to-application table. A real resolver can populate it when a
- * flow is first observed, while replies are matched through the reversed key.
+ * Compatibility facade for the flow-to-application table.
+ * TrafficFlowTable is the single implementation used by the traffic layer.
  */
 class TrafficSessionTable(
-    private val maxEntries: Int = 4096,
-    private val idleTimeoutMillis: Long = 120_000L
+    maxEntries: Int = TrafficFlowTable.DEFAULT_MAX_ENTRIES,
+    idleTimeoutMillis: Long = TrafficFlowTable.DEFAULT_IDLE_TIMEOUT_MILLIS
 ) {
-    private val entries = ConcurrentHashMap<TrafficFlowKey, Entry>()
+    private val table = TrafficFlowTable(idleTimeoutMillis = idleTimeoutMillis, maxEntries = maxEntries)
 
-    fun bind(flow: TrafficFlowKey, packageName: String, nowMillis: Long = System.currentTimeMillis()) {
-        cleanup(nowMillis)
-        if (packageName.isBlank()) return
-        if (entries.size >= maxEntries && entries[flow] == null) {
-            entries.entries.minByOrNull { it.value.lastSeenMillis }?.let { entries.remove(it.key) }
-        }
-        entries[flow] = Entry(packageName, nowMillis)
-    }
+    fun bind(flow: TrafficFlowKey, packageName: String, nowMillis: Long = System.currentTimeMillis()) =
+        table.bind(flow, packageName, nowMillis)
 
-    fun resolve(flow: TrafficFlowKey, nowMillis: Long = System.currentTimeMillis()): String? {
-        val entry = entries[flow] ?: entries[flow.reversed()] ?: return null
-        if (nowMillis - entry.lastSeenMillis > idleTimeoutMillis) {
-            entries.remove(flow)
-            entries.remove(flow.reversed())
-            return null
-        }
-        entry.lastSeenMillis = nowMillis
-        return entry.packageName
-    }
+    fun resolve(flow: TrafficFlowKey, nowMillis: Long = System.currentTimeMillis()): String? =
+        table.find(flow, nowMillis)?.packageName
 
-    fun remove(flow: TrafficFlowKey) {
-        entries.remove(flow)
-        entries.remove(flow.reversed())
-    }
+    fun remove(flow: TrafficFlowKey) = table.remove(flow)
 
-    fun clear() = entries.clear()
+    fun clear() = table.clear()
 
-    fun size(): Int = entries.size
-
-    private fun cleanup(nowMillis: Long) {
-        entries.entries.removeIf { nowMillis - it.value.lastSeenMillis > idleTimeoutMillis }
-    }
-
-    private data class Entry(
-        val packageName: String,
-        @Volatile var lastSeenMillis: Long
-    )
+    fun size(): Int = table.size()
 }
