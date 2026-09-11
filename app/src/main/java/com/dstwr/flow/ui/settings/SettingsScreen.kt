@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.item
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.Security
@@ -78,7 +77,7 @@ fun SettingsScreen(
                 SettingSwitchRow("تنبيهات الحصص", "تنبيه عند الاقتراب من الحصة أو بلوغها", state.notificationsEnabled, onNotificationsChange)
                 if (!state.notificationsEnabled) {
                     Spacer(Modifier.height(8.dp))
-                    OutlinedButton(onRequestNotifications, Modifier.fillMaxWidth()) { Text("تفعيل إشعارات النظام") }
+                    OutlinedButton(onClick = onRequestNotifications, modifier = Modifier.fillMaxWidth()) { Text("تفعيل إشعارات النظام") }
                 }
             }
         }
@@ -91,8 +90,8 @@ fun SettingsScreen(
                 Text(if (vpnPrepared) "VPN: جاهز" else "VPN: يحتاج موافقة النظام", style = MaterialTheme.typography.bodyMedium)
                 Text(if (usageAccessGranted) "إحصائيات الاستخدام: مفعّلة" else "إحصائيات الاستخدام: غير مفعّلة", style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(10.dp))
-                if (!vpnPrepared) OutlinedButton(onRequestVpnConsent, Modifier.fillMaxWidth()) { Text("منح صلاحية VPN") }
-                if (!usageAccessGranted) OutlinedButton(onOpenUsageAccess, Modifier.fillMaxWidth()) { Text("فتح صلاحية إحصائيات الاستخدام") }
+                if (!vpnPrepared) OutlinedButton(onClick = onRequestVpnConsent, modifier = Modifier.fillMaxWidth()) { Text("منح صلاحية VPN") }
+                if (!usageAccessGranted) OutlinedButton(onClick = onOpenUsageAccess, modifier = Modifier.fillMaxWidth()) { Text("فتح صلاحية إحصائيات الاستخدام") }
             }
         }
         item {
@@ -111,7 +110,7 @@ fun SettingsScreen(
                 Spacer(Modifier.height(6.dp))
                 Text("DSTWR Flow لا يحتاج خادمًا خارجيًا لعمل الحماية الحالية. سياسات التطبيقات وإعداداتك محفوظة محليًا.", style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(10.dp))
-                Button(onClick = { showDisableConfirmation = true }, Modifier.fillMaxWidth()) { Text("إيقاف كل الحماية") }
+                Button(onClick = { showDisableConfirmation = true }, modifier = Modifier.fillMaxWidth()) { Text("إيقاف كل الحماية") }
             }
         }
         item {
