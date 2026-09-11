@@ -16,6 +16,7 @@ data class TrafficPolicySnapshot(
 
 class TrafficPolicyRegistry {
     private val policies = java.util.concurrent.ConcurrentHashMap<String, TrafficPolicySnapshot>()
+    @Volatile private var globalBlocked = false
 
     fun replaceAll(items: Collection<TrafficPolicySnapshot>) {
         policies.clear()
@@ -34,5 +35,14 @@ class TrafficPolicyRegistry {
 
     fun snapshot(): List<TrafficPolicySnapshot> = policies.values.toList()
 
-    fun clear() = policies.clear()
+    fun setGlobalBlocked(blocked: Boolean) {
+        globalBlocked = blocked
+    }
+
+    fun isGlobalBlocked(): Boolean = globalBlocked
+
+    fun clear() {
+        policies.clear()
+        globalBlocked = false
+    }
 }
