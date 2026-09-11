@@ -13,7 +13,6 @@ import com.dstwr.flow.domain.policy.AppPolicyRuntimeCoordinator
 import com.dstwr.flow.domain.policy.PolicyAlertPolicy
 import com.dstwr.flow.domain.policy.RuntimeApp
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
 /** Builds the local VPN policy and runtime traffic policy snapshot. */
@@ -25,8 +24,8 @@ class VpnPolicyEngine(private val context: Context) {
     private val usageRepository = UsageStatsRepository(context)
     private val runtime = AppPolicyRuntimeCoordinator(policyRepository, UsageWindowRepository(usageRepository))
 
-    suspend fun currentEmergencyState(): Boolean = settings.emergencyBlockEnabled.first()
-    suspend fun notificationsEnabled(): Boolean = settings.notificationsEnabled.first()
+    suspend fun currentEmergencyState(): Boolean = settings.isEmergencyBlockEnabled()
+    suspend fun notificationsEnabled(): Boolean = settings.areNotificationsEnabled()
 
     suspend fun activeBlockedPackages(emergencyBlock: Boolean, networkType: NetworkState.Type = NetworkState.Type.OTHER): List<String> = withContext(Dispatchers.IO) {
         if (emergencyBlock) return@withContext inventory.getLaunchableApps().map { it.packageName }
