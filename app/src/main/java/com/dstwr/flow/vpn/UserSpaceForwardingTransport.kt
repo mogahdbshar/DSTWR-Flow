@@ -19,8 +19,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 /** Local user-space TCP/UDP forwarding transport with protected upstream sockets. */
 class UserSpaceForwardingTransport(
     private val vpnService: VpnService,
-    private val scope: CoroutineScope,
-    private val tunWriter: (ByteArray) -> Unit
+    private val scope: CoroutineScope
 ) : TrafficEngine.PacketTransport {
     private val tcp = ConcurrentHashMap<TrafficFlowKey, TcpBridge>()
     private val udp = ConcurrentHashMap<TrafficFlowKey, UdpBridge>()
@@ -37,8 +36,11 @@ class UserSpaceForwardingTransport(
     }
 
     override fun readDownload(): ByteArray? {
-        if (closed.get() && downloadQueue.isEmpty()) return null
-        return downloadQueue.poll(1, TimeUnit.SECONDS)
+        while (!closed.get() || downloadQueue.isNotEmpty()) {
+            val packet = downloadQueue.poll(1, TimeUnit.SECONDS)
+            if (packet != null) return packet
+        }
+        return null
     }
 
     private fun forwardTcp(packet: IpPacketCodec.TransportPacket) {
@@ -71,7 +73,9 @@ class UserSpaceForwardingTransport(
         if (!closed.compareAndSet(false, true)) return
         tcp.values.forEach { it.close() }
         udp.values.forEach { it.close() }
-        tcp.clear(); udp.clear(); downloadQueue.clear()
+        tcp.clear()
+        udp.clear()
+        downloadQueue.clear()
     }
 
     private inner class TcpBridge(private val first: IpPacketCodec.TransportPacket) {
@@ -114,7 +118,9 @@ class UserSpaceForwardingTransport(
                     socket.getOutputStream().flush()
                     clientNextSequence = packet.sequence + packet.payload.size
                     enqueue(IpPacketCodec.tcp(first.ipVersion, remoteAddress, clientAddress, remotePort, clientPort, serverSequence, clientNextSequence, IpPacketCodec.TCP_ACK))
-                } catch (_: IOException) { close() }
+                } catch (_: IOException) {
+                    close()
+                }
             }
             if ((packet.flags and IpPacketCodec.TCP_FIN) != 0) {
                 clientNextSequence = maxOf(clientNextSequence, packet.sequence + 1L)
@@ -167,7 +173,9 @@ class UserSpaceForwardingTransport(
                         val payload = response.data.copyOfRange(response.offset, response.offset + response.length)
                         enqueue(IpPacketCodec.udp(first.ipVersion, first.destinationAddress, first.sourceAddress, first.destinationPort, first.sourcePort, payload))
                     }
-                } catch (_: Exception) { close() }
+                } catch (_: Exception) {
+                    close()
+                }
             }
         }
 
@@ -192,7 +200,8 @@ class UserSpaceForwardingTransport(
         if (!closed.get()) downloadQueue.offer(packet)
     }
 
-    private fun IpPacketCodec.TransportPacket.toFlowKey(): TrafficFlowKey = TrafficFlowKey(ipVersion, protocol, sourceAddress, sourcePort, destinationAddress, destinationPort)
+    private fun IpPacketCodec.TransportPacket.toFlowKey(): TrafficFlowKey =
+        TrafficFlowKey(ipVersion, protocol, sourceAddress, sourcePort, destinationAddress, destinationPort)
 
     companion object {
         private const val CONNECT_TIMEOUT_MS = 10_000
