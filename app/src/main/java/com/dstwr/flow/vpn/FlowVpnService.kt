@@ -16,24 +16,28 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.collectLatest
 import java.io.FileInputStream
+import java.io.FileOutputStream
 
-/** Local VPN lifecycle and blocking policy controller. */
+/** Local VPN lifecycle and real user-space traffic enforcement controller. */
 class FlowVpnService : VpnService() {
     private var vpnInterface: ParcelFileDescriptor? = null
-    private var drainJob: Job? = null
+    private var trafficEngine: TrafficEngine? = null
     private var applyJob: Job? = null
     private var monitorJob: Job? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var policyEngine: VpnPolicyEngine
     private lateinit var notificationHelper: FlowNotificationHelper
     private lateinit var networkStateMonitor: NetworkStateMonitor
+    private val trafficPolicies = TrafficPolicyRegistry()
+    private val speedLimits = SpeedLimitRegistry()
+    private val trafficMeter = TrafficMeter()
     private val warnedQuotaKeys = mutableSetOf<String>()
     private val reachedQuotaKeys = mutableSetOf<String>()
-    private var lastBlockedPackages: Set<String>? = null
+    private var lastManagedPackages: Set<String>? = null
     private var lastEmergencyBlock: Boolean? = null
     private var lastNetworkType: NetworkState.Type? = null
 
@@ -57,7 +61,6 @@ class FlowVpnService : VpnService() {
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
         val emergencyBlock = intent?.getBooleanExtra(EXTRA_EMERGENCY, false) == true
-
         applyJob?.cancel()
         applyJob = serviceScope.launch { applyPolicy(emergencyBlock, force = true) }
         startMonitorIfNeeded()
@@ -67,23 +70,25 @@ class FlowVpnService : VpnService() {
     override fun onBind(intent: Intent): IBinder? = super.onBind(intent)
 
     override fun onDestroy() {
-        applyJob?.cancel()
-        applyJob = null
-        monitorJob?.cancel()
-        monitorJob = null
-        stopTunnelReader()
+        applyJob?.cancel(); applyJob = null
+        monitorJob?.cancel(); monitorJob = null
+        stopTrafficEngine()
         closeVpnInterface()
-        warnedQuotaKeys.clear()
-        reachedQuotaKeys.clear()
+        warnedQuotaKeys.clear(); reachedQuotaKeys.clear()
         serviceScope.cancel()
         super.onDestroy()
+    }
+
+    override fun onRevoke() {
+        stopVpn()
+        super.onRevoke()
     }
 
     private fun startMonitorIfNeeded() {
         if (monitorJob?.isActive == true) return
         monitorJob = serviceScope.launch {
             launch {
-                networkStateMonitor.states().collectLatest { state ->
+                networkStateMonitor.states().collectLatest {
                     if (!isActive) return@collectLatest
                     val emergency = policyEngine.currentEmergencyState()
                     applyJob?.cancel()
@@ -128,69 +133,103 @@ class FlowVpnService : VpnService() {
     private suspend fun applyPolicy(emergencyBlock: Boolean, force: Boolean) {
         try {
             val networkType = networkStateMonitor.currentState().networkType
-            val blockedPackages = policyEngine.activeBlockedPackages(emergencyBlock, networkType).toSet()
+            val managedPackages = policyEngine.managedPackages(emergencyBlock).toSet()
             val unchanged = !force &&
                 lastEmergencyBlock == emergencyBlock &&
-                lastBlockedPackages == blockedPackages &&
+                lastManagedPackages == managedPackages &&
                 lastNetworkType == networkType
             if (unchanged) return
 
-            if (!emergencyBlock && blockedPackages.isEmpty()) {
-                lastBlockedPackages = emptySet()
+            if (!emergencyBlock && managedPackages.isEmpty()) {
+                lastManagedPackages = emptySet()
                 lastEmergencyBlock = false
                 lastNetworkType = networkType
-                stopTunnelOnly()
+                stopTrafficEngine()
+                stopVpnInterfaceOnly()
                 return
             }
 
-            stopTunnelReader()
+            stopTrafficEngine()
             closeVpnInterface()
-            val established = policyEngine.buildBlockingTunnel(blockedPackages.toList(), emergencyBlock).establish()
-            if (established == null) {
-                stopVpn()
-                return
+
+            trafficPolicies.replaceAll(policyEngine.trafficPolicies(emergencyBlock, networkType))
+            speedLimits.clear()
+            trafficPolicies.snapshot().forEach { policy ->
+                speedLimits.configure(
+                    policy.packageName,
+                    policy.downloadLimitBytesPerSecond,
+                    policy.uploadLimitBytesPerSecond
+                )
             }
+
+            val established = policyEngine.buildBlockingTunnel(managedPackages.toList(), emergencyBlock).establish()
+                ?: run {
+                    stopVpn()
+                    return
+                }
             vpnInterface = established
-            lastBlockedPackages = blockedPackages
+            lastManagedPackages = managedPackages
             lastEmergencyBlock = emergencyBlock
             lastNetworkType = networkType
-            startTunnelReader(established)
+            startTrafficEngine(established)
         } catch (_: SecurityException) {
             stopVpn()
         } catch (_: IllegalStateException) {
             stopVpn()
+        } catch (_: RuntimeException) {
+            stopVpn()
         }
     }
 
-    private fun startTunnelReader(interfaceFd: ParcelFileDescriptor) {
-        stopTunnelReader()
-        drainJob = serviceScope.launch {
-            FileInputStream(interfaceFd.fileDescriptor).use { input ->
-                val buffer = ByteArray(BUFFER_SIZE)
-                try {
-                    while (isActive) {
-                        val count = input.read(buffer)
-                        if (count < 0) break
-                    }
-                } catch (_: Exception) {
-                    if (isActive) stopVpn()
-                }
-            }
-        }
+    private fun startTrafficEngine(interfaceFd: ParcelFileDescriptor) {
+        stopTrafficEngine()
+        val input = FileInputStream(interfaceFd.fileDescriptor)
+        val output = FileOutputStream(interfaceFd.fileDescriptor)
+        val identityResolver = ConnectionOwnerUidResolver(applicationContext, trafficPolicies)
+        val decisionEngine = PacketDecisionEngine(
+            connections = ConnectionTracker(),
+            speeds = speedLimits,
+            meter = trafficMeter,
+            identityResolver = identityResolver,
+            policies = trafficPolicies
+        )
+        val transport = UserSpaceForwardingTransport(
+            vpnService = this,
+            scope = serviceScope,
+            tunWriter = { packet -> output.write(packet); output.flush() }
+        )
+        trafficEngine = TrafficEngine(
+            scope = serviceScope,
+            input = input,
+            output = output,
+            transport = transport,
+            decisionEngine = decisionEngine
+        ).also { it.start() }
     }
 
-    private fun stopTunnelReader() { drainJob?.cancel(); drainJob = null }
-    private fun closeVpnInterface() { vpnInterface?.close(); vpnInterface = null }
-    private fun stopTunnelOnly() { stopTunnelReader(); closeVpnInterface() }
+    private fun stopTrafficEngine() {
+        trafficEngine?.stop()
+        trafficEngine = null
+    }
+
+    private fun stopVpnInterfaceOnly() {
+        closeVpnInterface()
+    }
+
+    private fun closeVpnInterface() {
+        runCatching { vpnInterface?.close() }
+        vpnInterface = null
+    }
 
     private fun stopVpn() {
         applyJob?.cancel(); applyJob = null
         monitorJob?.cancel(); monitorJob = null
-        lastBlockedPackages = null
+        lastManagedPackages = null
         lastEmergencyBlock = null
         lastNetworkType = null
         warnedQuotaKeys.clear(); reachedQuotaKeys.clear()
-        stopTunnelOnly()
+        stopTrafficEngine()
+        closeVpnInterface()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(STOP_FOREGROUND_REMOVE)
         else { @Suppress("DEPRECATION") stopForeground(true) }
         stopSelf()
@@ -220,6 +259,5 @@ class FlowVpnService : VpnService() {
         const val EXTRA_EMERGENCY = "emergency_block"
         private const val CHANNEL_ID = "dstwr_flow_service"
         private const val NOTIFICATION_ID = 7101
-        private const val BUFFER_SIZE = 32767
     }
 }
