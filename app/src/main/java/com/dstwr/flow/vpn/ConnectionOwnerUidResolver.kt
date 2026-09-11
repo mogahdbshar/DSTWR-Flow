@@ -18,23 +18,14 @@ class ConnectionOwnerUidResolver(
 
     override fun resolve(packet: ParsedPacket, direction: TrafficDirection): String? {
         if (packet.protocol != 6 && packet.protocol != 17) return null
-
         sessions.find(packet.toFlowKey())?.packageName?.let { return it }
+        if (direction == TrafficDirection.DOWNLOAD) return null
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
         if (packet.sourcePort <= 0 || packet.destinationPort <= 0) return null
 
         val key = packet.toFlowKey()
-        val local = if (direction == TrafficDirection.UPLOAD) {
-            InetSocketAddress(packet.sourceAddress, packet.sourcePort)
-        } else {
-            InetSocketAddress(packet.destinationAddress, packet.destinationPort)
-        }
-        val remote = if (direction == TrafficDirection.UPLOAD) {
-            InetSocketAddress(packet.destinationAddress, packet.destinationPort)
-        } else {
-            InetSocketAddress(packet.sourceAddress, packet.sourcePort)
-        }
-
+        val local = InetSocketAddress(packet.sourceAddress, packet.sourcePort)
+        val remote = InetSocketAddress(packet.destinationAddress, packet.destinationPort)
         val uid = runCatching {
             connectivity.getConnectionOwnerUid(packet.protocol, local, remote)
         }.getOrDefault(Process.INVALID_UID)
@@ -45,9 +36,7 @@ class ConnectionOwnerUidResolver(
             ?.firstOrNull { policies.get(it) != null }
             ?: packageManager.getPackagesForUid(uid)?.firstOrNull()
 
-        if (!packageName.isNullOrBlank()) {
-            sessions.bind(key, packageName)
-        }
+        if (!packageName.isNullOrBlank()) sessions.bind(key, packageName)
         return packageName
     }
 
