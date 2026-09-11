@@ -7,5 +7,13 @@
         <item name="android:navigationBarColor">@android:color/white</item>
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:windowNoTitle">true</item>
+        <item name="android:windowDisablePreview">false</item>
+    </style>
+
+    <style name="Theme.DSTWRFlow.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/dstwr_splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/dstwr_flow_logo</item>
+        <item name="windowSplashScreenAnimationDuration">450</item>
+        <item name="postSplashScreenTheme">@style/Theme.DSTWRFlow</item>
     </style>
 </resources>
