@@ -34,31 +34,47 @@ Android adapters
   VpnService -> local traffic interception foundation
   Foreground Service -> persistent control lifecycle
 
-Future traffic engine
-  TUN reader/writer -> protocol handling -> policy evaluation -> forwarding
-  IPv4 + IPv6 -> per-app rules -> quotas -> shaping where technically supported
+Traffic foundation
+  TUN reader/writer -> packet parsing -> connection/session tracking
+  policy snapshot -> identity resolution -> block/rate decision -> metering
+  IPv4 + IPv6 parsing -> bounded flow tables -> lifecycle-safe shutdown
+
+Future traffic transport
+  packet decision -> real forwarding transport -> upstream/downstream routing
+  shaping where technically supported by the final transport architecture
 ```
 
-## Current foundation
+## Phase 1 status: foundation completed
 
-The repository now contains:
+The first engineering phase establishes the production-safe foundation without introducing native code, a remote server, or an external VPN provider.
 
-- A stable Material 3 Compose shell without the removed `SmallTopAppBar` API.
-- A premium dashboard foundation with RTL-friendly Arabic UI.
-- Explicit VPN consent handling.
-- A foreground-capable local VPN service lifecycle.
-- Room database entities and DAOs for app policies and usage snapshots.
-- DataStore persistence for protection, emergency mode, language, refresh rate and global quota settings.
-- Installed-app inventory through the Android launcher query.
-- NetworkStatsManager integration for per-UID accounting of Wi-Fi and mobile traffic.
-- Domain models for policies, network scope and control mode.
-- Unit tests for core data formatting.
+Completed in this phase:
+
+- Stable Material 3 Compose shell and dashboard foundation.
+- Explicit VPN consent handling and local foreground-service lifecycle.
+- Room database entities/DAOs for app policies and usage snapshots.
+- DataStore persistence for protection, emergency mode, language, refresh and global settings.
+- Installed-app inventory through Android PackageManager launcher queries.
+- NetworkStatsManager integration for per-UID Wi-Fi/mobile accounting.
+- Policy models for block state, quotas, schedules, network scope and speed limits.
+- Runtime policy evaluation with deterministic priority and quota alerts.
+- Network transport detection that ignores the app's own VPN and reacts to transport changes through ConnectivityManager callbacks.
+- Bounded bidirectional flow/session bookkeeping with idle expiry and maximum entry limits.
+- Defensive IPv4/IPv6 packet parsing with strict declared-length validation and bounded extension-header traversal.
+- Explicit upload/download traffic direction models.
+- Runtime traffic policy snapshots and a thread-safe policy registry.
+- Packet decision layer that can return Forward, Blocked, Throttled or Malformed decisions without guessing an app identity.
+- Direction-aware traffic pump with safe sibling cancellation and transport shutdown.
+- Unit coverage for flow keys, flow/session expiry, policy registry, packet boundaries and traffic lifecycle basics.
+- Manual-only GitHub Actions build workflow to conserve Actions usage.
 
 ## What is deliberately not claimed yet
 
-A TUN interface by itself is not a complete VPN. Without a forwarding engine, intercepted packets can be dropped. Therefore DSTWR Flow does **not** advertise the current VPN foundation as a finished internet-blocking engine.
+A TUN interface by itself is not a complete VPN. The current blocking tunnel intentionally routes selected blocked applications into a local TUN interface where their packets are discarded. It is therefore a local blocking foundation, not yet a transparent internet-forwarding VPN.
 
-Per-app speed shaping without root is also constrained by Android and depends on the eventual packet-forwarding architecture and OS/device capabilities. The production implementation will expose only capabilities that can actually be enforced.
+The traffic engine contains the contracts needed for forwarding, policy decisions and shaping, but no upstream/downstream forwarding transport is claimed as complete yet. Per-app speed shaping without root also depends on that final transport and Android/device capabilities.
+
+App identity is never guessed from a raw TUN packet. The current session resolver works only when a trusted flow-to-package binding exists. A future identity adapter must establish that binding before per-app packet enforcement can be considered complete.
 
 ## Product modules
 
