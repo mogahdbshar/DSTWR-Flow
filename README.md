@@ -33,20 +33,39 @@ DSTWR Flow is a local-first Android network control and data intelligence applic
 - Foreground protection lifecycle
 - Reboot safety handling
 - Network transition detection
-- IPv4/IPv6 packet parsing foundation
-- Flow/session bookkeeping
-- Traffic metering primitives
-- Upload/download rate-limit primitives
+- IPv4/IPv6 packet parsing and packet construction
+- Bounded flow/session bookkeeping
+- Runtime traffic policy registry
+- Android 10+ connection-owner UID resolution
+- Local user-space TCP forwarding through protected sockets
+- Local user-space UDP forwarding through protected datagram sockets
+- TUN response queue and reverse packet injection
+- Upload/download token-bucket enforcement path
+- Packet metering
 - Diagnostics and privacy settings
 - Arabic/English-ready UI structure
 
-## Important technical boundary
+## Real traffic engine
 
-`VpnService` provides the TUN interception point, not a complete transparent Internet forwarding stack. DSTWR Flow's selective blocking path intentionally routes selected applications into a local non-forwarding tunnel, where their traffic is discarded. Applications that are not selected remain outside that tunnel.
+DSTWR Flow now contains an actual local forwarding transport inside the application rather than only a TUN reader/blackhole.
 
-A true transparent forwarding engine requires substantially more networking machinery: TCP connection termination/reconstruction, UDP flow handling, NAT/state management, checksum handling, reply routing, DNS behavior and robust IPv4/IPv6 edge-case handling. The repository does not falsely label its current packet pump as that finished engine.
+The live path is:
 
-Likewise, per-app upload/download speed limits are modeled and validated by the policy layer, but are not advertised as physically enforced until a real forwarding transport exists and is validated on supported Android versions and devices.
+`Android app -> TUN -> packet parser -> connection identity -> policy -> rate limiter -> local TCP/UDP forwarder -> protected system socket -> Internet -> response packet -> TUN -> Android app`
+
+TCP is terminated and bridged through protected Java sockets. UDP is forwarded through protected datagram sockets. `VpnService.protect()` prevents the forwarding sockets from being captured by the VPN itself and avoids a routing loop.
+
+Android 10+ `ConnectivityManager.getConnectionOwnerUid()` is used to recover the owner UID for intercepted TCP/UDP flows when the framework exposes that mapping to the active VPN service. The UID is then mapped to an installed package so per-app policies can participate in the packet decision layer.
+
+## Technical boundaries
+
+This is a real user-space forwarding implementation, but it is not presented as a replacement for Android's kernel TCP/IP stack. Real-device validation is still required for retransmission behavior, congestion control, unusual TCP options, IPv6 edge cases, captive portals, OEM networking differences and long-lived connections.
+
+On Android versions below API 29, the framework does not provide the same connection-owner UID API, so exact per-app packet attribution cannot be guaranteed for every intercepted flow on those versions.
+
+The application does not use Go, NDK, a native tunnel binary, an external VPN server or cloud forwarding infrastructure.
+
+See [`docs/TRAFFIC_ENGINE.md`](docs/TRAFFIC_ENGINE.md) for the complete engineering description and acceptance boundaries.
 
 ## Permissions
 
@@ -62,6 +81,6 @@ Run manually:
 
 ## Acceptance testing
 
-A successful APK build validates compilation and automated tests. It does not replace real-device testing.
+The repository contains unit tests for packet parsing, packet codec round trips, policy evaluation, flow tables, speed primitives and traffic lifecycle. A successful APK build is still required before calling this transport production-ready, followed by real-device network tests.
 
-See [`docs/FINAL_PROJECT_STATUS.md`](docs/FINAL_PROJECT_STATUS.md) for the complete acceptance checklist and the exact technical capability boundary.
+See [`docs/FINAL_PROJECT_STATUS.md`](docs/FINAL_PROJECT_STATUS.md) for the project status and acceptance checklist.
