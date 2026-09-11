@@ -71,6 +71,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import com.dstwr.flow.domain.util.DataFormatter
 import com.dstwr.flow.ui.apps.AppIcon
@@ -114,6 +115,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         protectionController = FlowProtectionController(applicationContext)
         refreshPermissionState()
