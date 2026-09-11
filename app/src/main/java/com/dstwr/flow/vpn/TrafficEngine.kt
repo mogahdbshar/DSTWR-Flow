@@ -42,9 +42,7 @@ class TrafficEngine(
                 val count = input.read(buffer)
                 if (count <= 0) continue
                 when (val decision = decisionEngine.inspect(buffer, count, TrafficDirection.UPLOAD)) {
-                    is PacketDecisionEngine.Decision.Forward -> {
-                        transport.forwardUpload(buffer, count, decision.packet)
-                    }
+                    is PacketDecisionEngine.Decision.Forward -> transport.forwardUpload(buffer, count, decision.packet)
                     is PacketDecisionEngine.Decision.Throttled -> {
                         delay(decision.retryAfterMillis)
                         if (isActive && running.get()) {
@@ -57,7 +55,7 @@ class TrafficEngine(
         } catch (_: IOException) {
             // TUN shutdown is an expected lifecycle event.
         } finally {
-            stopFromWorker()
+            stopFromWorker(downloadJob)
         }
     }
 
@@ -66,16 +64,10 @@ class TrafficEngine(
             while (isActive && running.get()) {
                 val packet = transport.readDownload() ?: break
                 when (val decision = decisionEngine.inspect(packet, packet.size, TrafficDirection.DOWNLOAD)) {
-                    is PacketDecisionEngine.Decision.Forward -> {
-                        output.write(packet)
-                        output.flush()
-                    }
+                    is PacketDecisionEngine.Decision.Forward -> writeToTun(packet)
                     is PacketDecisionEngine.Decision.Throttled -> {
                         delay(decision.retryAfterMillis)
-                        if (isActive && running.get()) {
-                            output.write(packet)
-                            output.flush()
-                        }
+                        if (isActive && running.get()) writeToTun(packet)
                     }
                     PacketDecisionEngine.Decision.Malformed -> Unit
                 }
@@ -83,16 +75,18 @@ class TrafficEngine(
         } catch (_: IOException) {
             // Transport shutdown is an expected lifecycle event.
         } finally {
-            stopFromWorker()
+            stopFromWorker(uploadJob)
         }
     }
 
-    private fun stopFromWorker() {
+    private fun writeToTun(packet: ByteArray) {
+        output.write(packet)
+        output.flush()
+    }
+
+    private fun stopFromWorker(sibling: Job?) {
         if (!running.compareAndSet(true, false)) return
-        uploadJob?.cancel()
-        downloadJob?.cancel()
-        uploadJob = null
-        downloadJob = null
+        sibling?.cancel()
         transport.close()
     }
 
