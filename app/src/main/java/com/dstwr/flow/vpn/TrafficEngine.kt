@@ -11,13 +11,7 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 
-/**
- * Direction-aware TUN packet pump.
- *
- * The engine only forwards packets through the supplied transport. It never
- * claims delivery when the transport cannot provide it. Download traffic is
- * injected back into the TUN interface by the transport implementation.
- */
+/** Direction-aware TUN packet pump for the real forwarding transport. */
 class TrafficEngine(
     private val scope: CoroutineScope,
     private val input: InputStream,
@@ -46,9 +40,7 @@ class TrafficEngine(
                     is PacketDecisionEngine.Decision.Forward -> transport.forwardUpload(buffer, count, decision.packet)
                     is PacketDecisionEngine.Decision.Throttled -> {
                         delay(decision.retryAfterMillis)
-                        if (isActive && running.get()) {
-                            transport.forwardUpload(buffer, count, decision.packet)
-                        }
+                        if (isActive && running.get()) transport.forwardUpload(buffer, count, decision.packet)
                     }
                     PacketDecisionEngine.Decision.Malformed -> Unit
                 }
@@ -63,7 +55,8 @@ class TrafficEngine(
     private suspend fun pumpDownload() {
         try {
             while (isActive && running.get()) {
-                val packet = transport.readDownload() ?: break
+                val packet = transport.readDownload()
+                if (packet == null) continue
                 when (val decision = decisionEngine.inspect(packet, packet.size, TrafficDirection.DOWNLOAD)) {
                     is PacketDecisionEngine.Decision.Blocked -> Unit
                     is PacketDecisionEngine.Decision.Forward -> writeToTun(packet)
