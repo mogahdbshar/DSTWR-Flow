@@ -36,11 +36,9 @@ class FlowBootReceiver : BroadcastReceiver() {
                     )
                 }
 
-                runCatching {
+                try {
                     ContextCompat.startForegroundService(appContext, serviceIntent)
-                }.onFailure {
-                    // Android may reject foreground-service startup from boot on some versions.
-                    // Keep the saved preference disabled rather than leaving a false active state.
+                } catch (_: Exception) {
                     settings.disableAllProtection()
                 }
             } finally {
