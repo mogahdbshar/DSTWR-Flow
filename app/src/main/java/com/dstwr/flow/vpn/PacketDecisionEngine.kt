@@ -25,11 +25,12 @@ class PacketDecisionEngine(
             return Decision.Blocked(packet, packageName, direction)
         }
 
+        val packetBytes = packet.totalBytes.toLong()
         val result = when (packageName) {
             null -> TokenBucket.ConsumeResult(true, 0L)
             else -> when (direction) {
-                TrafficDirection.UPLOAD -> speeds.consumeUpload(packageName, packet.totalBytes)
-                TrafficDirection.DOWNLOAD -> speeds.consumeDownload(packageName, packet.totalBytes)
+                TrafficDirection.UPLOAD -> speeds.consumeUpload(packageName, packetBytes)
+                TrafficDirection.DOWNLOAD -> speeds.consumeDownload(packageName, packetBytes)
             }
         }
         val throttled = !result.allowed
@@ -50,8 +51,9 @@ class PacketDecisionEngine(
             meter.record(packet, dropped = true, throttled = false)
             return Decision.Blocked(packet, packageName ?: "*", direction)
         }
+        val packetBytes = packet.totalBytes.toLong()
         val result = packageName?.let {
-            if (upload) speeds.consumeUpload(it, packet.totalBytes) else speeds.consumeDownload(it, packet.totalBytes)
+            if (upload) speeds.consumeUpload(it, packetBytes) else speeds.consumeDownload(it, packetBytes)
         } ?: TokenBucket.ConsumeResult(true, 0L)
         val throttled = !result.allowed
         meter.record(packet, dropped = false, throttled = throttled)
