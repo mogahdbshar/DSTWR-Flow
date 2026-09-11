@@ -2,12 +2,7 @@ package com.dstwr.flow.vpn
 
 import java.util.concurrent.ConcurrentHashMap
 
-/**
- * Bounded flow-to-application table for packet/session bookkeeping.
- *
- * Entries are indexed by the exact five-tuple. Replies can be resolved by
- * using the reversed key, so callers do not need to duplicate entries.
- */
+/** Bounded flow-to-application table for packet/session bookkeeping. */
 class TrafficFlowTable(
     private val idleTimeoutMillis: Long = DEFAULT_IDLE_TIMEOUT_MILLIS,
     private val maxEntries: Int = DEFAULT_MAX_ENTRIES
@@ -19,18 +14,11 @@ class TrafficFlowTable(
 
     private val flows = ConcurrentHashMap<TrafficFlowKey, Entry>()
 
-    fun touch(
-        packet: ParsedPacket,
-        packageName: String? = null,
-        nowMillis: Long = System.currentTimeMillis()
-    ) = touch(packet.toFlowKey(), packageName, nowMillis)
+    fun touch(packet: ParsedPacket, packageName: String? = null, nowMillis: Long = System.currentTimeMillis()) =
+        touch(packet.toFlowKey(), packageName, nowMillis)
 
-    fun touch(
-        key: TrafficFlowKey,
-        packageName: String? = null,
-        nowMillis: Long = System.currentTimeMillis()
-    ) {
-        cleanup(nowMillis)
+    fun touch(key: TrafficFlowKey, packageName: String? = null, nowMillis: Long = System.currentTimeMillis()) {
+        prune(nowMillis)
         if (packageName.isNullOrBlank() && flows[key]?.packageName != null) {
             flows.computeIfPresent(key) { _, old -> old.copy(lastSeenMillis = nowMillis) }
         } else {
@@ -40,13 +28,19 @@ class TrafficFlowTable(
     }
 
     fun find(key: TrafficFlowKey, nowMillis: Long = System.currentTimeMillis()): Entry? {
-        val entry = flows[key] ?: flows[key.reversed()] ?: return null
+        val direct = flows[key]
+        val reverse = if (direct == null) flows[key.reversed()] else null
+        val entry = direct ?: reverse ?: return null
         if (nowMillis - entry.lastSeenMillis > idleTimeoutMillis) {
             flows.remove(key, entry)
             flows.remove(key.reversed(), entry)
             return null
         }
-        flows.computeIfPresent(key) { _, old -> old.copy(lastSeenMillis = nowMillis) }
+        if (direct != null) {
+            flows.computeIfPresent(key) { _, old -> old.copy(lastSeenMillis = nowMillis) }
+        } else {
+            flows.computeIfPresent(key.reversed()) { _, old -> old.copy(lastSeenMillis = nowMillis) }
+        }
         return entry
     }
 
@@ -75,10 +69,7 @@ class TrafficFlowTable(
         }
     }
 
-    data class Entry(
-        val packageName: String?,
-        val lastSeenMillis: Long
-    )
+    data class Entry(val packageName: String?, val lastSeenMillis: Long)
 
     companion object {
         const val DEFAULT_IDLE_TIMEOUT_MILLIS = 120_000L
