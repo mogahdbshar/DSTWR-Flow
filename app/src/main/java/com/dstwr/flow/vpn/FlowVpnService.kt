@@ -23,7 +23,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.FileInputStream
 
-/** Local VPN lifecycle and blocking policy controller. */
 class FlowVpnService : VpnService() {
     private var vpnInterface: ParcelFileDescriptor? = null
     private var drainJob: Job? = null
@@ -113,7 +112,7 @@ class FlowVpnService : VpnService() {
                 networkStateMonitor.states().collectLatest {
                     if (!isActive) return@collectLatest
                     val emergency = policyEngine.currentEmergencyState()
-                    applyPolicy(emergency, force = true)
+                    applyPolicy(emergency, force = false)
                 }
             }
         }
@@ -156,7 +155,6 @@ class FlowVpnService : VpnService() {
                     lastEmergencyBlock == emergencyBlock &&
                     lastBlockedPackages == blockedPackages &&
                     lastNetworkType == network.networkType
-
                 if (unchanged) return
 
                 if (!emergencyBlock && blockedPackages.isEmpty()) {
