@@ -42,6 +42,7 @@ class TrafficEngine(
                 val count = input.read(buffer)
                 if (count <= 0) continue
                 when (val decision = decisionEngine.inspect(buffer, count, TrafficDirection.UPLOAD)) {
+                    is PacketDecisionEngine.Decision.Blocked -> Unit
                     is PacketDecisionEngine.Decision.Forward -> transport.forwardUpload(buffer, count, decision.packet)
                     is PacketDecisionEngine.Decision.Throttled -> {
                         delay(decision.retryAfterMillis)
@@ -64,6 +65,7 @@ class TrafficEngine(
             while (isActive && running.get()) {
                 val packet = transport.readDownload() ?: break
                 when (val decision = decisionEngine.inspect(packet, packet.size, TrafficDirection.DOWNLOAD)) {
+                    is PacketDecisionEngine.Decision.Blocked -> Unit
                     is PacketDecisionEngine.Decision.Forward -> writeToTun(packet)
                     is PacketDecisionEngine.Decision.Throttled -> {
                         delay(decision.retryAfterMillis)
