@@ -213,7 +213,7 @@ class FlowVpnService : VpnService() {
     }
 
     private fun buildNotification(): Notification = NotificationCompat.Builder(this, CHANNEL_ID)
-        .setSmallIcon(android.R.drawable.stat_sys_warning)
+        .setSmallIcon(com.dstwr.flow.R.drawable.ic_dstwr_flow)
         .setContentTitle("DSTWR Flow")
         .setContentText("التحكم المحلي في الشبكة يعمل")
         .setOngoing(true)
