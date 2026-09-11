@@ -18,6 +18,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collectLatest
 import java.io.FileInputStream
 
 /** Local VPN lifecycle and blocking policy controller. */
@@ -81,13 +82,17 @@ class FlowVpnService : VpnService() {
     private fun startMonitorIfNeeded() {
         if (monitorJob?.isActive == true) return
         monitorJob = serviceScope.launch {
+            launch {
+                networkStateMonitor.states().collectLatest { state ->
+                    if (!isActive) return@collectLatest
+                    val emergency = policyEngine.currentEmergencyState()
+                    applyJob?.cancel()
+                    applyJob = launch { applyPolicy(emergency, force = false) }
+                }
+            }
             while (isActive) {
-                delay(MONITOR_INTERVAL_MS)
-                if (!isActive) break
-                val emergency = policyEngine.currentEmergencyState()
-                applyJob?.cancel()
-                applyJob = launch { applyPolicy(emergency, force = false) }
                 runCatching { checkQuotaNotifications() }
+                delay(60_000L)
             }
         }
     }
@@ -216,6 +221,5 @@ class FlowVpnService : VpnService() {
         private const val CHANNEL_ID = "dstwr_flow_service"
         private const val NOTIFICATION_ID = 7101
         private const val BUFFER_SIZE = 32767
-        private const val MONITOR_INTERVAL_MS = 60_000L
     }
 }
