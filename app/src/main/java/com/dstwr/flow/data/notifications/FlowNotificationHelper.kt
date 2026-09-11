@@ -8,8 +8,9 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import java.util.Locale
 
-/** Creates local, low-noise notifications for policy events. */
+/** Creates local notifications for policy events. */
 class FlowNotificationHelper(context: Context) {
     private val appContext = context.applicationContext
     private val manager = appContext.getSystemService(NotificationManager::class.java)
@@ -17,64 +18,43 @@ class FlowNotificationHelper(context: Context) {
     init {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             manager.createNotificationChannel(
-                NotificationChannel(
-                    CHANNEL_ID,
-                    "تنبيهات DSTWR Flow",
-                    NotificationManager.IMPORTANCE_DEFAULT
-                ).apply {
+                NotificationChannel(CHANNEL_ID, "تنبيهات DSTWR Flow", NotificationManager.IMPORTANCE_DEFAULT).apply {
                     description = "تنبيهات استهلاك وحصص الشبكة"
                 }
             )
         }
     }
 
-    fun notifyQuotaWarning(
-        packageName: String,
-        appLabel: String,
-        usedBytes: Long,
-        quotaBytes: Long,
-        percent: Int,
-        period: Period = Period.DAILY
-    ) {
+    fun notifyQuotaWarning(packageName: String, appLabel: String, usedBytes: Long, quotaBytes: Long, percent: Int, period: Period = Period.DAILY) {
         if (!canNotify() || quotaBytes <= 0L) return
         val safePercent = percent.coerceIn(0, 100)
-        val periodLabel = if (period == Period.DAILY) "اليومية" else "الشهرية"
-        val notification = NotificationCompat.Builder(appContext, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_notify_more)
-            .setContentTitle("اقتراب الحصة $periodLabel")
-            .setContentText("$appLabel استخدم ${safePercent}% من الحصة المحددة")
-            .setStyle(
-                NotificationCompat.BigTextStyle().bigText(
-                    "استهلاك التطبيق: ${formatBytes(usedBytes)} من ${formatBytes(quotaBytes)} ($safePercent%)."
-                )
-            )
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setAutoCancel(true)
-            .build()
-        manager.notify(notificationId(packageName, TYPE_WARNING, period), notification)
+        val periodLabel = period.label
+        manager.notify(
+            notificationId(packageName, TYPE_WARNING, period),
+            NotificationCompat.Builder(appContext, CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.stat_notify_more)
+                .setContentTitle("اقتراب الحصة $periodLabel")
+                .setContentText("$appLabel استخدم $safePercent% من الحصة المحددة")
+                .setStyle(NotificationCompat.BigTextStyle().bigText("استهلاك التطبيق: ${formatBytes(usedBytes)} من ${formatBytes(quotaBytes)} ($safePercent%)."))
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setAutoCancel(true)
+                .build()
+        )
     }
 
-    fun notifyQuotaReached(
-        packageName: String,
-        appLabel: String,
-        quotaBytes: Long,
-        period: Period = Period.DAILY
-    ) {
+    fun notifyQuotaReached(packageName: String, appLabel: String, quotaBytes: Long, period: Period = Period.DAILY) {
         if (!canNotify() || quotaBytes <= 0L) return
-        val periodLabel = if (period == Period.DAILY) "اليومية" else "الشهرية"
-        val notification = NotificationCompat.Builder(appContext, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_notify_more)
-            .setContentTitle("تم بلوغ الحصة $periodLabel")
-            .setContentText("تم إيقاف اتصال $appLabel بسبب بلوغ الحصة")
-            .setStyle(
-                NotificationCompat.BigTextStyle().bigText(
-                    "بلغ التطبيق الحصة المحددة: ${formatBytes(quotaBytes)}."
-                )
-            )
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .build()
-        manager.notify(notificationId(packageName, TYPE_REACHED, period), notification)
+        manager.notify(
+            notificationId(packageName, TYPE_REACHED, period),
+            NotificationCompat.Builder(appContext, CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.stat_notify_more)
+                .setContentTitle("تم بلوغ الحصة ${period.label}")
+                .setContentText("تم إيقاف اتصال $appLabel بسبب بلوغ الحصة")
+                .setStyle(NotificationCompat.BigTextStyle().bigText("بلغ التطبيق الحصة المحددة: ${formatBytes(quotaBytes)}."))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .build()
+        )
     }
 
     fun cancelForPackage(packageName: String) {
@@ -84,12 +64,10 @@ class FlowNotificationHelper(context: Context) {
         }
     }
 
-    private fun canNotify(): Boolean =
-        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            ContextCompat.checkSelfPermission(
-                appContext,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
+    fun cancelWarning(packageName: String, period: Period) = manager.cancel(notificationId(packageName, TYPE_WARNING, period))
+
+    private fun canNotify(): Boolean = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+        ContextCompat.checkSelfPermission(appContext, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
     private fun notificationId(packageName: String, type: Int, period: Period): Int =
         20_000_000 + ((packageName.hashCode() and 0x00FF_FFFF) * 8) + (type * 2) + period.code
@@ -99,17 +77,11 @@ class FlowNotificationHelper(context: Context) {
         val units = arrayOf("B", "KB", "MB", "GB", "TB")
         var number = safe.toDouble()
         var index = 0
-        while (number >= 1024.0 && index < units.lastIndex) {
-            number /= 1024.0
-            index++
-        }
-        return if (index == 0) "${safe} B" else "%.1f %s".format(number, units[index])
+        while (number >= 1024.0 && index < units.lastIndex) { number /= 1024.0; index++ }
+        return if (index == 0) "$safe B" else "%.1f %s".format(Locale.US, number, units[index])
     }
 
-    enum class Period(val code: Int) {
-        DAILY(1),
-        MONTHLY(2)
-    }
+    enum class Period(val code: Int, val label: String) { DAILY(1, "اليومية"), MONTHLY(2, "الشهرية") }
 
     companion object {
         const val TYPE_WARNING = 1
