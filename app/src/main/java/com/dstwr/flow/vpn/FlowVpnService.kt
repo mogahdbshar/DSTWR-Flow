@@ -57,7 +57,6 @@ class FlowVpnService : VpnService() {
             ACTION_APPLY, null -> Unit
             else -> Unit
         }
-
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
         val emergencyBlock = intent?.getBooleanExtra(EXTRA_EMERGENCY, false) == true
@@ -107,21 +106,17 @@ class FlowVpnService : VpnService() {
         if (policyEngine.notificationsEnabled()) {
             policyEngine.quotaAlerts().forEach { alert ->
                 if (alert.dailyReached) {
-                    val key = "${alert.packageName}:daily"
-                    activeKeys += key
+                    val key = "${alert.packageName}:daily"; activeKeys += key
                     if (reachedQuotaKeys.add(key)) notificationHelper.notifyQuotaReached(alert.packageName, alert.appLabel, alert.dailyQuotaBytes, FlowNotificationHelper.Period.DAILY)
                 } else if (alert.dailyPercent >= 80) {
-                    val key = "${alert.packageName}:daily"
-                    activeKeys += key
+                    val key = "${alert.packageName}:daily"; activeKeys += key
                     if (warnedQuotaKeys.add(key)) notificationHelper.notifyQuotaWarning(alert.packageName, alert.appLabel, alert.dailyUsedBytes, alert.dailyQuotaBytes, alert.dailyPercent, FlowNotificationHelper.Period.DAILY)
                 }
                 if (alert.monthlyReached) {
-                    val key = "${alert.packageName}:monthly"
-                    activeKeys += key
+                    val key = "${alert.packageName}:monthly"; activeKeys += key
                     if (reachedQuotaKeys.add(key)) notificationHelper.notifyQuotaReached(alert.packageName, alert.appLabel, alert.monthlyQuotaBytes, FlowNotificationHelper.Period.MONTHLY)
                 } else if (alert.monthlyPercent >= 80) {
-                    val key = "${alert.packageName}:monthly"
-                    activeKeys += key
+                    val key = "${alert.packageName}:monthly"; activeKeys += key
                     if (warnedQuotaKeys.add(key)) notificationHelper.notifyQuotaWarning(alert.packageName, alert.appLabel, alert.monthlyUsedBytes, alert.monthlyQuotaBytes, alert.monthlyPercent, FlowNotificationHelper.Period.MONTHLY)
                 }
             }
@@ -134,16 +129,15 @@ class FlowVpnService : VpnService() {
         try {
             val networkType = networkStateMonitor.currentState().networkType
             val managedPackages = policyEngine.managedPackages(emergencyBlock).toSet()
-            val unchanged = !force &&
-                lastEmergencyBlock == emergencyBlock &&
-                lastManagedPackages == managedPackages &&
-                lastNetworkType == networkType
+            val unchanged = !force && lastEmergencyBlock == emergencyBlock && lastManagedPackages == managedPackages && lastNetworkType == networkType
             if (unchanged) return
 
             if (!emergencyBlock && managedPackages.isEmpty()) {
                 lastManagedPackages = emptySet()
                 lastEmergencyBlock = false
                 lastNetworkType = networkType
+                trafficPolicies.clear()
+                speedLimits.clear()
                 stopTrafficEngine()
                 stopVpnInterfaceOnly()
                 return
@@ -151,22 +145,17 @@ class FlowVpnService : VpnService() {
 
             stopTrafficEngine()
             closeVpnInterface()
-
             trafficPolicies.replaceAll(policyEngine.trafficPolicies(emergencyBlock, networkType))
+            trafficPolicies.setGlobalBlocked(emergencyBlock)
             speedLimits.clear()
             trafficPolicies.snapshot().forEach { policy ->
-                speedLimits.configure(
-                    policy.packageName,
-                    policy.downloadLimitBytesPerSecond,
-                    policy.uploadLimitBytesPerSecond
-                )
+                speedLimits.configure(policy.packageName, policy.downloadLimitBytesPerSecond, policy.uploadLimitBytesPerSecond)
             }
 
-            val established = policyEngine.buildBlockingTunnel(managedPackages.toList(), emergencyBlock).establish()
-                ?: run {
-                    stopVpn()
-                    return
-                }
+            val established = policyEngine.buildBlockingTunnel(managedPackages.toList(), emergencyBlock).establish() ?: run {
+                stopVpn()
+                return
+            }
             vpnInterface = established
             lastManagedPackages = managedPackages
             lastEmergencyBlock = emergencyBlock
@@ -186,25 +175,9 @@ class FlowVpnService : VpnService() {
         val input = FileInputStream(interfaceFd.fileDescriptor)
         val output = FileOutputStream(interfaceFd.fileDescriptor)
         val identityResolver = ConnectionOwnerUidResolver(applicationContext, trafficPolicies)
-        val decisionEngine = PacketDecisionEngine(
-            connections = ConnectionTracker(),
-            speeds = speedLimits,
-            meter = trafficMeter,
-            identityResolver = identityResolver,
-            policies = trafficPolicies
-        )
-        val transport = UserSpaceForwardingTransport(
-            vpnService = this,
-            scope = serviceScope,
-            tunWriter = { packet -> output.write(packet); output.flush() }
-        )
-        trafficEngine = TrafficEngine(
-            scope = serviceScope,
-            input = input,
-            output = output,
-            transport = transport,
-            decisionEngine = decisionEngine
-        ).also { it.start() }
+        val decisionEngine = PacketDecisionEngine(ConnectionTracker(), speedLimits, trafficMeter, identityResolver, trafficPolicies)
+        val transport = UserSpaceForwardingTransport(this, serviceScope) { packet -> output.write(packet); output.flush() }
+        trafficEngine = TrafficEngine(serviceScope, input, output, transport, decisionEngine).also { it.start() }
     }
 
     private fun stopTrafficEngine() {
@@ -212,9 +185,7 @@ class FlowVpnService : VpnService() {
         trafficEngine = null
     }
 
-    private fun stopVpnInterfaceOnly() {
-        closeVpnInterface()
-    }
+    private fun stopVpnInterfaceOnly() = closeVpnInterface()
 
     private fun closeVpnInterface() {
         runCatching { vpnInterface?.close() }
@@ -224,12 +195,10 @@ class FlowVpnService : VpnService() {
     private fun stopVpn() {
         applyJob?.cancel(); applyJob = null
         monitorJob?.cancel(); monitorJob = null
-        lastManagedPackages = null
-        lastEmergencyBlock = null
-        lastNetworkType = null
+        lastManagedPackages = null; lastEmergencyBlock = null; lastNetworkType = null
         warnedQuotaKeys.clear(); reachedQuotaKeys.clear()
-        stopTrafficEngine()
-        closeVpnInterface()
+        trafficPolicies.clear(); speedLimits.clear()
+        stopTrafficEngine(); closeVpnInterface()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(STOP_FOREGROUND_REMOVE)
         else { @Suppress("DEPRECATION") stopForeground(true) }
         stopSelf()
@@ -238,9 +207,7 @@ class FlowVpnService : VpnService() {
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             getSystemService(NotificationManager::class.java).createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "DSTWR Flow", NotificationManager.IMPORTANCE_LOW).apply {
-                    description = "حالة التحكم المحلي في الشبكة"
-                }
+                NotificationChannel(CHANNEL_ID, "DSTWR Flow", NotificationManager.IMPORTANCE_LOW).apply { description = "حالة التحكم المحلي في الشبكة" }
             )
         }
     }
