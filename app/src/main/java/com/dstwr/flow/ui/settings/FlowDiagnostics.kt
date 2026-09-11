@@ -11,12 +11,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.NetworkCheck
-import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -98,17 +95,5 @@ private fun DiagnosticRow(title: String, value: String) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text(title, style = MaterialTheme.typography.bodyMedium)
         Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-    }
-}
-
-@Composable
-fun SettingsCard(content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
-    Card(
-        colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surface.copy(alpha = .84f)),
-        elevation = CardDefaults.cardElevation(0.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .12f)),
-        shape = MaterialTheme.shapes.large
-    ) {
-        Column(Modifier.fillMaxWidth().padding(18.dp), content = content)
     }
 }
