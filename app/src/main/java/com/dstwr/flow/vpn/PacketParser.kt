@@ -2,7 +2,7 @@ package com.dstwr.flow.vpn
 
 import java.net.InetAddress
 
-/** Lightweight defensive IPv4/IPv6 packet parser used by the traffic layer. */
+/** Defensive IPv4/IPv6 packet parser used by the traffic layer. */
 object PacketParser {
     fun parse(buffer: ByteArray, length: Int): ParsedPacket? {
         if (length <= 0 || length > buffer.size || length < 20) return null
@@ -18,8 +18,8 @@ object PacketParser {
         val ihl = (b[0].toInt() and 0x0f) * 4
         if (ihl < 20 || length < ihl) return null
         val declaredTotal = u16(b, 2)
-        if (declaredTotal < ihl) return null
-        val total = declaredTotal.coerceAtMost(length)
+        if (declaredTotal < ihl || declaredTotal > length) return null
+        val total = declaredTotal
         val protocol = b[9].toInt() and 0xff
         val source = address4(b, 12)
         val destination = address4(b, 16)
@@ -39,8 +39,8 @@ object PacketParser {
     private fun parseIpv6(b: ByteArray, length: Int): ParsedPacket? {
         val payloadLength = u16(b, 4)
         val declaredTotal = 40 + payloadLength
-        if (declaredTotal < 40) return null
-        val total = declaredTotal.coerceAtMost(length)
+        if (declaredTotal < 40 || declaredTotal > length) return null
+        val total = declaredTotal
         var next = b[6].toInt() and 0xff
         var offset = 40
         var guard = 0
@@ -58,6 +58,7 @@ object PacketParser {
             offset += size
         }
 
+        if (guard >= MAX_EXTENSION_HEADERS && next in EXTENSION_HEADERS) return null
         val source = address6(b, 8)
         val destination = address6(b, 24)
         val (srcPort, dstPort, transportHeader) = ports(b, offset, total, next)
@@ -94,5 +95,6 @@ object PacketParser {
     private const val TCP = 6
     private const val UDP = 17
     private const val MAX_EXTENSION_HEADERS = 16
-    private val EXTENSION_HEADERS = setOf(0, 43, 44, 50, 51, 60)
+    /** ESP (50) is an upper-layer protocol, not an RFC 8200 length-prefixed extension header. */
+    private val EXTENSION_HEADERS = setOf(0, 43, 44, 51, 60)
 }
