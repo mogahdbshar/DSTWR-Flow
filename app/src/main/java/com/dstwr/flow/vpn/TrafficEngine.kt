@@ -89,6 +89,10 @@ class TrafficEngine(
 
     private fun stopFromWorker() {
         if (!running.compareAndSet(true, false)) return
+        uploadJob?.cancel()
+        downloadJob?.cancel()
+        uploadJob = null
+        downloadJob = null
         transport.close()
     }
 
