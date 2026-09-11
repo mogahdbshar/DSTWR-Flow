@@ -1,108 +1,67 @@
 # DSTWR Flow
 
-DSTWR Flow is a local-first Android network control and data intelligence suite. The goal is a production-quality control center for understanding and managing device network usage without root or a remote VPN server.
+DSTWR Flow is a local-first Android network control and data intelligence application. It is designed to understand device network usage and apply explicit per-app control without root or a remote VPN server.
 
 ## Identity
 
 - Product: DSTWR Flow
 - Brand: DSTWR
 - Application ID: `com.dstwr.flow`
-- Kotlin only
+- Kotlin
 - Jetpack Compose + Material 3
 - Minimum Android API 24
+- Target Android API 35
 - Local-first and privacy-focused
-- Arabic RTL + English LTR
+- Arabic RTL + English LTR ready
 - Dark and light themes
-- Premium glass-inspired visual language
+- Manual-only GitHub Actions build
 
-## Engineering architecture
+## Implemented product areas
 
-```text
-Presentation
-  Compose UI -> ViewModels -> StateFlow
+- Dashboard
+- Installed applications
+- Per-app block policy
+- Wi-Fi/mobile policy scope
+- Daily/monthly quotas
+- Time schedules, including overnight schedules
+- Usage access integration
+- Wi-Fi/mobile usage statistics
+- Usage history and top-app views
+- Quota warning/reached notifications
+- Emergency protection mode
+- Explicit VPN consent
+- Foreground protection lifecycle
+- Reboot safety handling
+- Network transition detection
+- IPv4/IPv6 packet parsing foundation
+- Flow/session bookkeeping
+- Traffic metering primitives
+- Upload/download rate-limit primitives
+- Diagnostics and privacy settings
+- Arabic/English-ready UI structure
 
-Domain
-  Policies -> quotas -> schedules -> capability rules
+## Important technical boundary
 
-Data
-  Room -> app policies + usage history
-  DataStore -> persistent user settings
+`VpnService` provides the TUN interception point, not a complete transparent Internet forwarding stack. DSTWR Flow's selective blocking path intentionally routes selected applications into a local non-forwarding tunnel, where their traffic is discarded. Applications that are not selected remain outside that tunnel.
 
-Android adapters
-  PackageManager -> installed launchable apps
-  NetworkStatsManager -> Wi-Fi/mobile usage accounting
-  VpnService -> local traffic interception foundation
-  Foreground Service -> persistent control lifecycle
+A true transparent forwarding engine requires substantially more networking machinery: TCP connection termination/reconstruction, UDP flow handling, NAT/state management, checksum handling, reply routing, DNS behavior and robust IPv4/IPv6 edge-case handling. The repository does not falsely label its current packet pump as that finished engine.
 
-Traffic foundation
-  TUN reader/writer -> packet parsing -> connection/session tracking
-  policy snapshot -> identity resolution -> block/rate decision -> metering
-  IPv4 + IPv6 parsing -> bounded flow tables -> lifecycle-safe shutdown
+Likewise, per-app upload/download speed limits are modeled and validated by the policy layer, but are not advertised as physically enforced until a real forwarding transport exists and is validated on supported Android versions and devices.
 
-Future traffic transport
-  packet decision -> real forwarding transport -> upstream/downstream routing
-  shaping where technically supported by the final transport architecture
-```
+## Permissions
 
-## Phase 1 status: foundation completed
+Usage access is an Android special access opened through system settings. VPN control uses the Android system VPN consent dialog. Notification permission is requested explicitly where required by Android. The application does not require a remote VPN server or cloud account.
 
-The first engineering phase establishes the production-safe foundation without introducing native code, a remote server, or an external VPN provider.
+## Build
 
-Completed in this phase:
+GitHub Actions is manual-only to conserve usage. Nothing in the repository should automatically start an Actions build on push.
 
-- Stable Material 3 Compose shell and dashboard foundation.
-- Explicit VPN consent handling and local foreground-service lifecycle.
-- Room database entities/DAOs for app policies and usage snapshots.
-- DataStore persistence for protection, emergency mode, language, refresh and global settings.
-- Installed-app inventory through Android PackageManager launcher queries.
-- NetworkStatsManager integration for per-UID Wi-Fi/mobile accounting.
-- Policy models for block state, quotas, schedules, network scope and speed limits.
-- Runtime policy evaluation with deterministic priority and quota alerts.
-- Network transport detection that ignores the app's own VPN and reacts to transport changes through ConnectivityManager callbacks.
-- Bounded bidirectional flow/session bookkeeping with idle expiry and maximum entry limits.
-- Defensive IPv4/IPv6 packet parsing with strict declared-length validation and bounded extension-header traversal.
-- Explicit upload/download traffic direction models.
-- Runtime traffic policy snapshots and a thread-safe policy registry.
-- Packet decision layer that can return Forward, Blocked, Throttled or Malformed decisions without guessing an app identity.
-- Direction-aware traffic pump with safe sibling cancellation and transport shutdown.
-- Unit coverage for flow keys, flow/session expiry, policy registry, packet boundaries and traffic lifecycle basics.
-- Manual-only GitHub Actions build workflow to conserve Actions usage.
-
-## What is deliberately not claimed yet
-
-A TUN interface by itself is not a complete VPN. The current blocking tunnel intentionally routes selected blocked applications into a local TUN interface where their packets are discarded. It is therefore a local blocking foundation, not yet a transparent internet-forwarding VPN.
-
-The traffic engine contains the contracts needed for forwarding, policy decisions and shaping, but no upstream/downstream forwarding transport is claimed as complete yet. Per-app speed shaping without root also depends on that final transport and Android/device capabilities.
-
-App identity is never guessed from a raw TUN packet. The current session resolver works only when a trusted flow-to-package binding exists. A future identity adapter must establish that binding before per-app packet enforcement can be considered complete.
-
-## Product modules
-
-1. Onboarding and permissions
-2. Live dashboard
-3. Installed applications
-4. Per-app policy editor
-5. Wi-Fi/mobile usage analytics
-6. Quotas and alerts
-7. Schedules and rule engine
-8. Local traffic engine
-9. Speed-control capability layer
-10. Notifications
-11. Settings and privacy center
-12. Arabic/English localization
-13. Diagnostics and safe fallbacks
-14. Tests and build validation
-
-## Permissions and privacy
-
-Usage access is an Android special access and is opened through system settings. VPN control requires the Android system consent dialog. The app is designed around local storage and does not require a cloud account or remote VPN server.
-
-## Build policy
-
-GitHub Actions is **manual-only** to conserve Actions usage. Do not expect a push to start a build.
-
-After each major engineering phase:
+Run manually:
 
 `Actions` -> `Build DSTWR Flow` -> `Run workflow`
 
-The build result should be inspected before the next major phase.
+## Acceptance testing
+
+A successful APK build validates compilation and automated tests. It does not replace real-device testing.
+
+See [`docs/FINAL_PROJECT_STATUS.md`](docs/FINAL_PROJECT_STATUS.md) for the complete acceptance checklist and the exact technical capability boundary.
