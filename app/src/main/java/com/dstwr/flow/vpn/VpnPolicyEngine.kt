@@ -8,22 +8,15 @@ import com.dstwr.flow.data.local.FlowDatabaseProvider
 import com.dstwr.flow.data.settings.FlowSettingsRepository
 import com.dstwr.flow.data.usage.UsageStatsRepository
 import com.dstwr.flow.data.usage.UsageWindowRepository
+import com.dstwr.flow.domain.model.NetworkScope
 import com.dstwr.flow.domain.policy.AppPolicyRuntimeCoordinator
 import com.dstwr.flow.domain.policy.PolicyAlertPolicy
 import com.dstwr.flow.domain.policy.RuntimeApp
-import com.dstwr.flow.domain.model.NetworkScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
-/**
- * Builds the local VPN policy from the current application policy state.
- *
- * The current routing mode intentionally implements only blocking:
- * selected applications are routed into the local VPN tunnel, where there is
- * currently no upstream forwarding engine, so their traffic is stopped.
- * Applications not selected for blocking remain outside the VPN.
- */
+/** Builds the local VPN policy from persisted application rules. */
 class VpnPolicyEngine(private val context: Context) {
     private val database = FlowDatabaseProvider.get(context)
     private val inventory = AppInventoryRepository(context)
@@ -35,30 +28,27 @@ class VpnPolicyEngine(private val context: Context) {
         usageWindowRepository = UsageWindowRepository(usageRepository)
     )
 
-    suspend fun currentEmergencyState(): Boolean =
-        settings.emergencyBlockEnabled.first()
+    suspend fun currentEmergencyState(): Boolean = settings.emergencyBlockEnabled.first()
 
-    suspend fun notificationsEnabled(): Boolean =
-        settings.notificationsEnabled.first()
+    suspend fun notificationsEnabled(): Boolean = settings.notificationsEnabled.first()
 
-    suspend fun activeBlockedPackages(emergencyBlock: Boolean): List<String> = withContext(Dispatchers.IO) {
+    suspend fun activeBlockedPackages(
+        emergencyBlock: Boolean,
+        networkType: NetworkState.Type = NetworkState.Type.OTHER
+    ): List<String> = withContext(Dispatchers.IO) {
         if (emergencyBlock) {
             return@withContext inventory.getLaunchableApps().map { it.packageName }
         }
 
-        val persistedPolicies = policyRepository.getAll()
-            .associateBy { it.packageName }
-
+        val persistedPolicies = policyRepository.getAll().associateBy { it.packageName }
         if (persistedPolicies.isEmpty()) return@withContext emptyList()
 
-        val installedByPackage = inventory.getLaunchableApps()
-            .associateBy { it.packageName }
-
-        val candidates = persistedPolicies.values.mapNotNull { policy ->
-            installedByPackage[policy.packageName]?.let { app ->
-                RuntimeApp(app.packageName, app.uid)
+        val installedByPackage = inventory.getLaunchableApps().associateBy { it.packageName }
+        val candidates = persistedPolicies.values
+            .filter { it.networkScope.matches(networkType) }
+            .mapNotNull { policy ->
+                installedByPackage[policy.packageName]?.let { app -> RuntimeApp(app.packageName, app.uid) }
             }
-        }
 
         if (candidates.isEmpty()) return@withContext emptyList()
 
@@ -74,36 +64,25 @@ class VpnPolicyEngine(private val context: Context) {
         if (policies.isEmpty()) return@withContext emptyList()
 
         val installed = inventory.getLaunchableApps().associateBy { it.packageName }
+        val policiesByPackage = policies.associateBy { it.packageName }
         val apps = policies.mapNotNull { policy ->
             installed[policy.packageName]?.let { RuntimeApp(it.packageName, it.uid) }
         }
         if (apps.isEmpty()) return@withContext emptyList()
 
-        val decisions = runtime.evaluateAll(apps, emergencyBlock = false)
-        decisions.mapNotNull { runtimeDecision ->
-            val policy = policies.firstOrNull { it.packageName == runtimeDecision.packageName } ?: return@mapNotNull null
+        runtime.evaluateAll(apps, emergencyBlock = false).mapNotNull { runtimeDecision ->
+            val policy = policiesByPackage[runtimeDecision.packageName] ?: return@mapNotNull null
             val app = installed[runtimeDecision.packageName] ?: return@mapNotNull null
-            val dailyPercent = PolicyAlertPolicy.percentUsed(
-                runtimeDecision.usage.dailyBytesFor(policy.networkScope),
-                policy.dailyQuotaBytes
-            )
-            val monthlyPercent = PolicyAlertPolicy.percentUsed(
-                runtimeDecision.usage.monthlyBytesFor(policy.networkScope),
-                policy.monthlyQuotaBytes
-            )
-            val dailyReached = PolicyAlertPolicy.isReached(
-                runtimeDecision.usage.dailyBytesFor(policy.networkScope),
-                policy.dailyQuotaBytes
-            )
-            val monthlyReached = PolicyAlertPolicy.isReached(
-                runtimeDecision.usage.monthlyBytesFor(policy.networkScope),
-                policy.monthlyQuotaBytes
-            )
-            if (!PolicyAlertPolicy.shouldWarn(
-                    runtimeDecision.usage.dailyBytesFor(policy.networkScope), policy.dailyQuotaBytes
-                ) && !PolicyAlertPolicy.shouldWarn(
-                    runtimeDecision.usage.monthlyBytesFor(policy.networkScope), policy.monthlyQuotaBytes
-                ) && !dailyReached && !monthlyReached
+            val dailyUsed = runtimeDecision.usage.dailyBytesFor(policy.networkScope)
+            val monthlyUsed = runtimeDecision.usage.monthlyBytesFor(policy.networkScope)
+            val dailyPercent = PolicyAlertPolicy.percentUsed(dailyUsed, policy.dailyQuotaBytes)
+            val monthlyPercent = PolicyAlertPolicy.percentUsed(monthlyUsed, policy.monthlyQuotaBytes)
+            val dailyReached = PolicyAlertPolicy.isReached(dailyUsed, policy.dailyQuotaBytes)
+            val monthlyReached = PolicyAlertPolicy.isReached(monthlyUsed, policy.monthlyQuotaBytes)
+
+            if (!PolicyAlertPolicy.shouldWarn(dailyUsed, policy.dailyQuotaBytes) &&
+                !PolicyAlertPolicy.shouldWarn(monthlyUsed, policy.monthlyQuotaBytes) &&
+                !dailyReached && !monthlyReached
             ) return@mapNotNull null
 
             QuotaAlert(
@@ -115,22 +94,17 @@ class VpnPolicyEngine(private val context: Context) {
                 monthlyReached = monthlyReached,
                 dailyQuotaBytes = policy.dailyQuotaBytes,
                 monthlyQuotaBytes = policy.monthlyQuotaBytes,
-                dailyUsedBytes = runtimeDecision.usage.dailyBytesFor(policy.networkScope),
-                monthlyUsedBytes = runtimeDecision.usage.monthlyBytesFor(policy.networkScope)
+                dailyUsedBytes = dailyUsed,
+                monthlyUsedBytes = monthlyUsed
             )
         }
     }
 
     suspend fun blockedPackages(): List<String> = withContext(Dispatchers.IO) {
-        policyRepository.getAll()
-            .filter { it.blocked }
-            .map { it.packageName }
+        policyRepository.getAll().filter { it.blocked }.map { it.packageName }
     }
 
-    fun buildBlockingTunnel(
-        blockedPackages: List<String>,
-        emergencyBlock: Boolean
-    ): VpnService.Builder {
+    fun buildBlockingTunnel(blockedPackages: List<String>, emergencyBlock: Boolean): VpnService.Builder {
         val builder = VpnService.Builder()
             .setSession("DSTWR Flow")
             .setMtu(1500)
@@ -141,14 +115,9 @@ class VpnPolicyEngine(private val context: Context) {
 
         if (!emergencyBlock) {
             blockedPackages.forEach { packageName ->
-                try {
-                    builder.addAllowedApplication(packageName)
-                } catch (_: Exception) {
-                    // The package may have been uninstalled between refreshes.
-                }
+                runCatching { builder.addAllowedApplication(packageName) }
             }
         }
-
         return builder
     }
 }
@@ -165,6 +134,12 @@ data class QuotaAlert(
     val dailyUsedBytes: Long,
     val monthlyUsedBytes: Long
 )
+
+private fun NetworkScope.matches(type: NetworkState.Type): Boolean = when (this) {
+    NetworkScope.ALL -> true
+    NetworkScope.WIFI -> type == NetworkState.Type.WIFI
+    NetworkScope.MOBILE -> type == NetworkState.Type.MOBILE
+}
 
 private fun com.dstwr.flow.domain.policy.PolicyUsage.dailyBytesFor(scope: NetworkScope): Long = when (scope) {
     NetworkScope.ALL -> dailyBytes
