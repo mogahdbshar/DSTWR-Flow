@@ -11,7 +11,7 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 
-/** Direction-aware TUN packet pump for the real forwarding transport. */
+/** Direction-aware TUN packet pump with policy-aware throttling retries. */
 class TrafficEngine(
     private val scope: CoroutineScope,
     private val input: InputStream,
@@ -35,14 +35,17 @@ class TrafficEngine(
             while (isActive && running.get()) {
                 val count = input.read(buffer)
                 if (count <= 0) continue
-                when (val decision = decisionEngine.inspect(buffer, count, TrafficDirection.UPLOAD)) {
-                    is PacketDecisionEngine.Decision.Blocked -> Unit
-                    is PacketDecisionEngine.Decision.Forward -> transport.forwardUpload(buffer, count, decision.packet)
-                    is PacketDecisionEngine.Decision.Throttled -> {
-                        delay(decision.retryAfterMillis)
-                        if (isActive && running.get()) transport.forwardUpload(buffer, count, decision.packet)
+                val packet = buffer.copyOf(count)
+                while (isActive && running.get()) {
+                    when (val decision = decisionEngine.inspect(packet, packet.size, TrafficDirection.UPLOAD)) {
+                        is PacketDecisionEngine.Decision.Blocked -> break
+                        is PacketDecisionEngine.Decision.Forward -> {
+                            transport.forwardUpload(packet, packet.size, decision.packet)
+                            break
+                        }
+                        is PacketDecisionEngine.Decision.Throttled -> delay(decision.retryAfterMillis)
+                        PacketDecisionEngine.Decision.Malformed -> break
                     }
-                    PacketDecisionEngine.Decision.Malformed -> Unit
                 }
             }
         } catch (_: IOException) {
@@ -55,16 +58,17 @@ class TrafficEngine(
     private suspend fun pumpDownload() {
         try {
             while (isActive && running.get()) {
-                val packet = transport.readDownload()
-                if (packet == null) continue
-                when (val decision = decisionEngine.inspect(packet, packet.size, TrafficDirection.DOWNLOAD)) {
-                    is PacketDecisionEngine.Decision.Blocked -> Unit
-                    is PacketDecisionEngine.Decision.Forward -> writeToTun(packet)
-                    is PacketDecisionEngine.Decision.Throttled -> {
-                        delay(decision.retryAfterMillis)
-                        if (isActive && running.get()) writeToTun(packet)
+                val packet = transport.readDownload() ?: break
+                while (isActive && running.get()) {
+                    when (val decision = decisionEngine.inspect(packet, packet.size, TrafficDirection.DOWNLOAD)) {
+                        is PacketDecisionEngine.Decision.Blocked -> break
+                        is PacketDecisionEngine.Decision.Forward -> {
+                            writeToTun(packet)
+                            break
+                        }
+                        is PacketDecisionEngine.Decision.Throttled -> delay(decision.retryAfterMillis)
+                        PacketDecisionEngine.Decision.Malformed -> break
                     }
-                    PacketDecisionEngine.Decision.Malformed -> Unit
                 }
             }
         } catch (_: IOException) {
