@@ -3,6 +3,7 @@ package com.dstwr.flow.vpn
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -32,11 +33,11 @@ class TrafficEngine(
     private suspend fun pumpUpload() {
         val buffer = ByteArray(MAX_PACKET_SIZE)
         try {
-            while (isActive && running.get()) {
+            while (currentCoroutineContext().isActive && running.get()) {
                 val count = input.read(buffer)
                 if (count <= 0) continue
                 val packet = buffer.copyOf(count)
-                while (isActive && running.get()) {
+                while (currentCoroutineContext().isActive && running.get()) {
                     when (val decision = decisionEngine.inspect(packet, packet.size, TrafficDirection.UPLOAD)) {
                         is PacketDecisionEngine.Decision.Blocked -> break
                         is PacketDecisionEngine.Decision.Forward -> {
@@ -57,9 +58,9 @@ class TrafficEngine(
 
     private suspend fun pumpDownload() {
         try {
-            while (isActive && running.get()) {
+            while (currentCoroutineContext().isActive && running.get()) {
                 val packet = transport.readDownload() ?: break
-                while (isActive && running.get()) {
+                while (currentCoroutineContext().isActive && running.get()) {
                     when (val decision = decisionEngine.inspect(packet, packet.size, TrafficDirection.DOWNLOAD)) {
                         is PacketDecisionEngine.Decision.Blocked -> break
                         is PacketDecisionEngine.Decision.Forward -> {
