@@ -23,7 +23,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.FileInputStream
 
-/** Local traffic-control service. Current tunnel mode is selective blocking; forwarding is isolated as a future engine layer. */
+/** Local traffic-control service with native full forwarding and selective blocking modes. */
 class FlowVpnService : VpnService() {
     private var vpnInterface: ParcelFileDescriptor? = null
     private var drainJob: Job? = null
@@ -40,6 +40,7 @@ class FlowVpnService : VpnService() {
     private var lastBlockedPackages: Set<String>? = null
     private var lastEmergencyBlock: Boolean? = null
     private var lastNetworkType: NetworkState.Type? = null
+    private var lastForwardingMode: Boolean? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -75,7 +76,7 @@ class FlowVpnService : VpnService() {
 
     override fun onDestroy() {
         applyJob?.cancel(); monitorJob?.cancel(); networkJob?.cancel()
-        stopTunnelReader(); closeVpnInterface()
+        stopTunnelOnly()
         warnedQuotaKeys.clear(); reachedQuotaKeys.clear()
         serviceScope.cancel()
         super.onDestroy()
@@ -147,23 +148,73 @@ class FlowVpnService : VpnService() {
             try {
                 val network = networkStateMonitor.currentState()
                 val blockedPackages = policyEngine.activeBlockedPackages(emergencyBlock, network.networkType).toSet()
-                val unchanged = !force && lastEmergencyBlock == emergencyBlock && lastBlockedPackages == blockedPackages && lastNetworkType == network.networkType
+                val forwarding = !emergencyBlock && blockedPackages.isEmpty()
+                val unchanged = !force &&
+                    lastEmergencyBlock == emergencyBlock &&
+                    lastBlockedPackages == blockedPackages &&
+                    lastNetworkType == network.networkType &&
+                    lastForwardingMode == forwarding
                 if (unchanged) return
 
-                if (!emergencyBlock && blockedPackages.isEmpty()) {
-                    lastBlockedPackages = emptySet(); lastEmergencyBlock = false; lastNetworkType = network.networkType
-                    stopTunnelOnly(); return
+                stopTunnelOnly()
+
+                if (forwarding) {
+                    if (!network.connected) {
+                        lastBlockedPackages = emptySet()
+                        lastEmergencyBlock = false
+                        lastNetworkType = network.networkType
+                        lastForwardingMode = false
+                        return
+                    }
+
+                    val established = policyEngine.buildForwardingTunnel().establish()
+                    if (established == null) {
+                        lastBlockedPackages = null
+                        lastEmergencyBlock = null
+                        lastNetworkType = null
+                        lastForwardingMode = null
+                        return
+                    }
+
+                    val tunFd = runCatching { established.detachFd() }.getOrElse {
+                        established.close()
+                        -1
+                    }
+                    if (tunFd < 0 || !NativeTun2Socks.start(tunFd)) {
+                        if (tunFd >= 0) runCatching { android.system.Os.close(tunFd) }
+                        lastBlockedPackages = null
+                        lastEmergencyBlock = null
+                        lastNetworkType = null
+                        lastForwardingMode = null
+                        return
+                    }
+
+                    lastBlockedPackages = emptySet()
+                    lastEmergencyBlock = false
+                    lastNetworkType = network.networkType
+                    lastForwardingMode = true
+                    return
                 }
-                stopTunnelReader(); closeVpnInterface()
+
                 val established = policyEngine.buildBlockingTunnel(blockedPackages.toList(), emergencyBlock).establish()
                 if (established == null) {
-                    lastBlockedPackages = null; lastEmergencyBlock = null; lastNetworkType = null; stopTunnelOnly(); return
+                    lastBlockedPackages = null
+                    lastEmergencyBlock = null
+                    lastNetworkType = null
+                    lastForwardingMode = null
+                    return
                 }
                 vpnInterface = established
-                lastBlockedPackages = blockedPackages; lastEmergencyBlock = emergencyBlock; lastNetworkType = network.networkType
+                lastBlockedPackages = blockedPackages
+                lastEmergencyBlock = emergencyBlock
+                lastNetworkType = network.networkType
+                lastForwardingMode = false
                 startTunnelReader(established)
-            } catch (_: SecurityException) { stopTunnelOnly() }
-            catch (_: IllegalStateException) { stopTunnelOnly() }
+            } catch (_: SecurityException) {
+                stopTunnelOnly()
+            } catch (_: IllegalStateException) {
+                stopTunnelOnly()
+            }
         }
     }
 
@@ -179,12 +230,18 @@ class FlowVpnService : VpnService() {
     }
 
     private fun stopTunnelReader() { drainJob?.cancel(); drainJob = null }
+
     private fun closeVpnInterface() { vpnInterface?.close(); vpnInterface = null }
-    private fun stopTunnelOnly() { stopTunnelReader(); closeVpnInterface() }
+
+    private fun stopTunnelOnly() {
+        stopTunnelReader()
+        NativeTun2Socks.stop()
+        closeVpnInterface()
+    }
 
     private fun stopVpn() {
         applyJob?.cancel(); monitorJob?.cancel(); networkJob?.cancel()
-        lastBlockedPackages = null; lastEmergencyBlock = null; lastNetworkType = null
+        lastBlockedPackages = null; lastEmergencyBlock = null; lastNetworkType = null; lastForwardingMode = null
         warnedQuotaKeys.clear(); reachedQuotaKeys.clear(); stopTunnelOnly()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(STOP_FOREGROUND_REMOVE) else {
             @Suppress("DEPRECATION") stopForeground(true)
