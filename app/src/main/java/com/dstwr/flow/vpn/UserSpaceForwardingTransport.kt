@@ -13,14 +13,10 @@ import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
-/**
- * Local user-space forwarding transport.
- *
- * TCP is terminated locally and bridged to a protected java.net.Socket.
- * UDP is bridged with protected DatagramSockets. Responses are converted back
- * into IP packets and delivered to the TUN writer. No remote VPN server is used.
- */
+/** Local user-space TCP/UDP forwarding transport with protected upstream sockets. */
 class UserSpaceForwardingTransport(
     private val vpnService: VpnService,
     private val scope: CoroutineScope,
@@ -28,7 +24,8 @@ class UserSpaceForwardingTransport(
 ) : TrafficEngine.PacketTransport {
     private val tcp = ConcurrentHashMap<TrafficFlowKey, TcpBridge>()
     private val udp = ConcurrentHashMap<TrafficFlowKey, UdpBridge>()
-    private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val downloadQueue = LinkedBlockingQueue<ByteArray>()
+    private val closed = AtomicBoolean(false)
 
     override fun forwardUpload(buffer: ByteArray, length: Int, packet: ParsedPacket) {
         if (closed.get()) return
@@ -39,7 +36,10 @@ class UserSpaceForwardingTransport(
         }
     }
 
-    override fun readDownload(): ByteArray? = null
+    override fun readDownload(): ByteArray? {
+        if (closed.get() && downloadQueue.isEmpty()) return null
+        return downloadQueue.poll(1, TimeUnit.SECONDS)
+    }
 
     private fun forwardTcp(packet: IpPacketCodec.TransportPacket) {
         val key = packet.toFlowKey()
@@ -75,6 +75,7 @@ class UserSpaceForwardingTransport(
         udp.values.forEach { it.close() }
         tcp.clear()
         udp.clear()
+        downloadQueue.clear()
     }
 
     private inner class TcpBridge(private val first: IpPacketCodec.TransportPacket) {
@@ -94,7 +95,7 @@ class UserSpaceForwardingTransport(
                 try {
                     if (!vpnService.protect(socket)) throw IOException("Unable to protect TCP socket from VPN")
                     socket.connect(InetSocketAddress(InetAddress.getByName(remoteAddress), remotePort), CONNECT_TIMEOUT_MS)
-                    sendToTun(IpPacketCodec.tcp(
+                    enqueue(IpPacketCodec.tcp(
                         first.ipVersion, remoteAddress, clientAddress, remotePort, clientPort,
                         serverSequence, clientNextSequence, IpPacketCodec.TCP_SYN or IpPacketCodec.TCP_ACK
                     ))
@@ -102,7 +103,7 @@ class UserSpaceForwardingTransport(
                     readRemote()
                 } catch (_: Exception) {
                     if (!closedLocal) {
-                        sendToTun(IpPacketCodec.tcp(
+                        enqueue(IpPacketCodec.tcp(
                             first.ipVersion, remoteAddress, clientAddress, remotePort, clientPort,
                             serverSequence, clientNextSequence, IpPacketCodec.TCP_RST or IpPacketCodec.TCP_ACK
                         ))
@@ -124,7 +125,7 @@ class UserSpaceForwardingTransport(
                     socket.getOutputStream().write(packet.payload)
                     socket.getOutputStream().flush()
                     clientNextSequence = packet.sequence + packet.payload.size
-                    sendToTun(IpPacketCodec.tcp(
+                    enqueue(IpPacketCodec.tcp(
                         first.ipVersion, remoteAddress, clientAddress, remotePort, clientPort,
                         serverSequence, clientNextSequence, IpPacketCodec.TCP_ACK
                     ))
@@ -134,7 +135,7 @@ class UserSpaceForwardingTransport(
             }
             if ((packet.flags and IpPacketCodec.TCP_FIN) != 0) {
                 clientNextSequence = maxOf(clientNextSequence, packet.sequence + 1L)
-                sendToTun(IpPacketCodec.tcp(
+                enqueue(IpPacketCodec.tcp(
                     first.ipVersion, remoteAddress, clientAddress, remotePort, clientPort,
                     serverSequence, clientNextSequence, IpPacketCodec.TCP_ACK
                 ))
@@ -148,7 +149,7 @@ class UserSpaceForwardingTransport(
             while (scope.isActive && !closedLocal) {
                 val count = input.read(buffer)
                 if (count < 0) {
-                    sendToTun(IpPacketCodec.tcp(
+                    enqueue(IpPacketCodec.tcp(
                         first.ipVersion, remoteAddress, clientAddress, remotePort, clientPort,
                         serverSequence, clientNextSequence, IpPacketCodec.TCP_FIN or IpPacketCodec.TCP_ACK
                     ))
@@ -157,7 +158,7 @@ class UserSpaceForwardingTransport(
                 }
                 if (count == 0) continue
                 val payload = buffer.copyOf(count)
-                sendToTun(IpPacketCodec.tcp(
+                enqueue(IpPacketCodec.tcp(
                     first.ipVersion, remoteAddress, clientAddress, remotePort, clientPort,
                     serverSequence, clientNextSequence, IpPacketCodec.TCP_PSH or IpPacketCodec.TCP_ACK,
                     payload = payload
@@ -191,7 +192,7 @@ class UserSpaceForwardingTransport(
                         val response = DatagramPacket(buffer, buffer.size)
                         socket.receive(response)
                         val payload = response.data.copyOfRange(response.offset, response.offset + response.length)
-                        sendToTun(IpPacketCodec.udp(
+                        enqueue(IpPacketCodec.udp(
                             first.ipVersion,
                             first.destinationAddress,
                             first.sourceAddress,
@@ -223,8 +224,9 @@ class UserSpaceForwardingTransport(
         }
     }
 
-    private fun sendToTun(packet: ByteArray) {
-        if (!closed.get()) tunWriter(packet)
+    private fun enqueue(packet: ByteArray) {
+        if (closed.get()) return
+        downloadQueue.offer(packet)
     }
 
     private fun IpPacketCodec.TransportPacket.toFlowKey(): TrafficFlowKey = TrafficFlowKey(
