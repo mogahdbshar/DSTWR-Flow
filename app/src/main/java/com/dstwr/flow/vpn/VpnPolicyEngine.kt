@@ -18,12 +18,11 @@ import kotlinx.coroutines.withContext
 
 /** Builds the local VPN policy from persisted application rules. */
 class VpnPolicyEngine(private val context: Context) {
-    private val appContext = context.applicationContext
-    private val database = FlowDatabaseProvider.get(appContext)
-    private val inventory = AppInventoryRepository(appContext)
+    private val database = FlowDatabaseProvider.get(context)
+    private val inventory = AppInventoryRepository(context)
     private val policyRepository = AppPolicyRepository(database)
-    private val settings = FlowSettingsRepository(appContext)
-    private val usageRepository = UsageStatsRepository(appContext)
+    private val settings = FlowSettingsRepository(context.applicationContext)
+    private val usageRepository = UsageStatsRepository(context)
     private val runtime = AppPolicyRuntimeCoordinator(
         policyRepository = policyRepository,
         usageWindowRepository = UsageWindowRepository(usageRepository)
@@ -121,21 +120,6 @@ class VpnPolicyEngine(private val context: Context) {
         }
         return builder
     }
-
-    /**
-     * Full-device forwarding tunnel. DSTWR Flow itself is excluded so the native
-     * engine's direct outbound sockets cannot be routed back into its own TUN.
-     */
-    fun buildForwardingTunnel(): VpnService.Builder = VpnService.Builder()
-        .setSession("DSTWR Flow")
-        .setMtu(1500)
-        .addAddress("10.10.0.2", 32)
-        .addRoute("0.0.0.0", 0)
-        .addAddress("fd00:dstwr:flow::2", 128)
-        .addRoute("::", 0)
-        .also { builder ->
-            runCatching { builder.addDisallowedApplication(appContext.packageName) }
-        }
 }
 
 data class QuotaAlert(
