@@ -1,7 +1,5 @@
 package com.dstwr.flow.vpn
 
-import com.dstwr.flow.domain.policy.SpeedLimit
-
 /** Immutable runtime snapshot used by the traffic layer without touching storage. */
 data class TrafficPolicySnapshot(
     val packageName: String,
@@ -9,8 +7,11 @@ data class TrafficPolicySnapshot(
     val downloadLimitBytesPerSecond: Long = 0L,
     val uploadLimitBytesPerSecond: Long = 0L
 ) {
-    fun downloadLimit(): SpeedLimit = SpeedLimitFormatter.fromBytesPerSecond(downloadLimitBytesPerSecond)
-    fun uploadLimit(): SpeedLimit = SpeedLimitFormatter.fromBytesPerSecond(uploadLimitBytesPerSecond)
+    init {
+        require(packageName.isNotBlank()) { "packageName must not be blank" }
+        require(downloadLimitBytesPerSecond >= 0L) { "download limit must not be negative" }
+        require(uploadLimitBytesPerSecond >= 0L) { "upload limit must not be negative" }
+    }
 }
 
 class TrafficPolicyRegistry {
@@ -18,7 +19,7 @@ class TrafficPolicyRegistry {
 
     fun replaceAll(items: Collection<TrafficPolicySnapshot>) {
         policies.clear()
-        items.forEach { policy -> policies[policy.packageName] = policy }
+        items.forEach { policy -> put(policy) }
     }
 
     fun put(policy: TrafficPolicySnapshot) {
