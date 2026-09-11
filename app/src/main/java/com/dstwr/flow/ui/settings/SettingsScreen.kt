@@ -54,9 +54,7 @@ fun SettingsScreen(
     var showDisableConfirmation by remember { mutableStateOf(false) }
 
     LazyColumn(
-        modifier = modifier
-            .navigationBarsPadding()
-            .padding(horizontal = 16.dp),
+        modifier = modifier.navigationBarsPadding().padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 12.dp, bottom = 28.dp)
     ) {
@@ -98,6 +96,14 @@ fun SettingsScreen(
             }
         }
         item {
+            DiagnosticsSection(
+                vpnPrepared = vpnPrepared,
+                usageAccessGranted = usageAccessGranted,
+                protectionEnabled = state.protectionEnabled,
+                emergencyEnabled = state.emergencyBlockEnabled
+            )
+        }
+        item {
             SettingsCard {
                 Icon(Icons.Default.Storage, null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.height(8.dp))
@@ -132,7 +138,7 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
+fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
     Card(
         colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surface.copy(alpha = .84f)),
         elevation = CardDefaults.cardElevation(0.dp),
