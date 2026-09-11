@@ -84,8 +84,8 @@ class VpnPolicyEngine(private val context: Context) {
 
     suspend fun blockedPackages(): List<String> = withContext(Dispatchers.IO) { policyRepository.getAll().filter { it.blocked }.map { it.packageName } }
 
-    fun buildBlockingTunnel(managedPackages: List<String>, emergencyBlock: Boolean): VpnService.Builder {
-        val builder = VpnService.Builder()
+    fun buildBlockingTunnel(service: VpnService, managedPackages: List<String>, emergencyBlock: Boolean): VpnService.Builder {
+        val builder = service.Builder()
             .setSession("DSTWR Flow")
             .setMtu(1500)
             .setBlocking(true)
