@@ -127,6 +127,6 @@ private fun com.dstwr.flow.domain.policy.PolicyUsage.dailyBytesFor(scope: Networ
 
 private fun com.dstwr.flow.domain.policy.PolicyUsage.monthlyBytesFor(scope: NetworkScope): Long = when (scope) {
     NetworkScope.ALL -> monthlyBytes
-    NetworkScope.WIFI -> wifiBytes
+    NetworkScope.WIFI -> monthlyWifiBytes
     NetworkScope.MOBILE -> monthlyMobileBytes
 }
