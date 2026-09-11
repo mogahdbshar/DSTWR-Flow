@@ -17,7 +17,7 @@ var engineMu sync.Mutex
 var engineRunning bool
 
 //export Java_com_dstwr_flow_vpn_NativeTun2Socks_nativeStart
-func Java_com_dstwr_flow_NativeTun2Socks_nativeStart(_ C.uintptr_t, _ C.uintptr_t, fd C.int) C.bool {
+func Java_com_dstwr_flow_vpn_NativeTun2Socks_nativeStart(_ C.uintptr_t, _ C.uintptr_t, fd C.int) C.bool {
 	engineMu.Lock()
 	defer engineMu.Unlock()
 
@@ -45,7 +45,7 @@ func Java_com_dstwr_flow_NativeTun2Socks_nativeStart(_ C.uintptr_t, _ C.uintptr_
 }
 
 //export Java_com_dstwr_flow_vpn_NativeTun2Socks_nativeStop
-func Java_com_dstwr_flow_NativeTun2Socks_nativeStop(_ C.uintptr_t, _ C.uintptr_t) {
+func Java_com_dstwr_flow_vpn_NativeTun2Socks_nativeStop(_ C.uintptr_t, _ C.uintptr_t) {
 	engineMu.Lock()
 	defer engineMu.Unlock()
 
