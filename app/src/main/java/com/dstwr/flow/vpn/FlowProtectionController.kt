@@ -16,12 +16,11 @@ class FlowProtectionController(context: Context) {
             return false
         }
 
-        return runCatching {
+        return try {
             settings.setProtectionEnabled(true)
-            val emergency = settings.isEmergencyBlockEnabled()
-            vpn.start(emergencyBlock = emergency)
+            vpn.start(emergencyBlock = settings.isEmergencyBlockEnabled())
             true
-        }.getOrElse {
+        } catch (_: Exception) {
             settings.setProtectionEnabled(false)
             settings.setEmergencyBlockEnabled(false)
             vpn.stop()
@@ -46,15 +45,11 @@ class FlowProtectionController(context: Context) {
             return false
         }
 
-        return runCatching {
+        return try {
             settings.setEmergencyBlockEnabled(enabled)
-            if (!protection) {
-                vpn.stop()
-            } else {
-                vpn.start(emergencyBlock = enabled)
-            }
+            if (!protection) vpn.stop() else vpn.start(emergencyBlock = enabled)
             true
-        }.getOrElse {
+        } catch (_: Exception) {
             settings.setEmergencyBlockEnabled(false)
             false
         }
@@ -77,12 +72,13 @@ class FlowProtectionController(context: Context) {
             return
         }
 
-        runCatching { vpn.start(emergencyBlock = emergency) }
-            .onFailure {
-                settings.setProtectionEnabled(false)
-                settings.setEmergencyBlockEnabled(false)
-                vpn.stop()
-            }
+        try {
+            vpn.start(emergencyBlock = emergency)
+        } catch (_: Exception) {
+            settings.setProtectionEnabled(false)
+            settings.setEmergencyBlockEnabled(false)
+            vpn.stop()
+        }
     }
 
     fun isPrepared(): Boolean = vpn.isPrepared()
