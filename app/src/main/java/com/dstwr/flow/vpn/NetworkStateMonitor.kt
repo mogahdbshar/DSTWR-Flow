@@ -8,17 +8,21 @@ import android.net.NetworkRequest
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 
+/** Observes the physical internet transport without treating the app's VPN as upstream. */
 class NetworkStateMonitor(context: Context) {
     private val connectivity = context.applicationContext
         .getSystemService(ConnectivityManager::class.java)
 
     fun currentState(): NetworkState {
         val networks = connectivity.allNetworks
+        var hasOtherInternet = false
         for (network in networks) {
             val caps = connectivity.getNetworkCapabilities(network) ?: continue
             if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) continue
             if (caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) continue
+            hasOtherInternet = true
             when {
                 caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ->
                     return NetworkState(true, NetworkState.Type.WIFI)
@@ -26,7 +30,7 @@ class NetworkStateMonitor(context: Context) {
                     return NetworkState(true, NetworkState.Type.MOBILE)
             }
         }
-        return NetworkState(false, NetworkState.Type.NONE)
+        return NetworkState(hasOtherInternet, NetworkState.Type.OTHER.takeIf { hasOtherInternet } ?: NetworkState.Type.NONE)
     }
 
     fun states(): Flow<NetworkState> = callbackFlow {
@@ -45,5 +49,5 @@ class NetworkStateMonitor(context: Context) {
         runCatching { connectivity.registerNetworkCallback(request, callback) }
             .onFailure { close(it) }
         awaitClose { runCatching { connectivity.unregisterNetworkCallback(callback) } }
-    }
+    }.distinctUntilChanged()
 }
