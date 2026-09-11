@@ -2,15 +2,12 @@ package com.dstwr.flow.domain.policy
 
 import kotlin.math.ceil
 
-/**
- * Thread-safe token bucket used by the VPN forwarding layer.
- * A limit of zero means unlimited and therefore never throttles.
- */
+/** Thread-safe token bucket for byte-accurate rate limiting. Zero means unlimited. */
 class TokenBucket(
     private var rateBytesPerSecond: Long,
     capacityBytes: Long = defaultCapacity(rateBytesPerSecond)
 ) {
-    private var capacity = capacityBytes.coerceAtLeast(1L).toDouble()
+    private var capacity = normalizedCapacity(rateBytesPerSecond, capacityBytes).toDouble()
     private var tokens = capacity
     private var lastNanos = System.nanoTime()
 
@@ -18,11 +15,7 @@ class TokenBucket(
     fun updateRate(newRateBytesPerSecond: Long) {
         refill(System.nanoTime())
         rateBytesPerSecond = newRateBytesPerSecond.coerceAtLeast(0L)
-        capacity = if (rateBytesPerSecond <= 0L) {
-            1.0
-        } else {
-            maxOf(capacity, defaultCapacity(rateBytesPerSecond).toDouble())
-        }
+        capacity = normalizedCapacity(rateBytesPerSecond, capacity.toLong()).toDouble()
         tokens = tokens.coerceAtMost(capacity)
     }
 
@@ -30,19 +23,14 @@ class TokenBucket(
     fun tryConsume(byteCount: Long, nowNanos: Long = System.nanoTime()): ConsumeResult {
         val requested = byteCount.coerceAtLeast(0L)
         refill(nowNanos)
-        if (requested == 0L || rateBytesPerSecond <= 0L) {
-            return ConsumeResult(true, 0L)
-        }
-
+        if (requested == 0L || rateBytesPerSecond <= 0L) return ConsumeResult(true, 0L)
         if (requested <= tokens) {
             tokens -= requested
             return ConsumeResult(true, 0L)
         }
-
         val missing = requested - tokens
-        val waitMillis = ceil(
-            missing * 1000.0 / rateBytesPerSecond.toDouble()
-        ).toLong().coerceAtLeast(1L)
+        val waitMillis = ceil(missing.toDouble() * 1000.0 / rateBytesPerSecond.toDouble())
+            .toLong().coerceAtLeast(1L)
         return ConsumeResult(false, waitMillis)
     }
 
@@ -63,13 +51,15 @@ class TokenBucket(
         lastNanos = nowNanos
     }
 
-    data class ConsumeResult(
-        val allowed: Boolean,
-        val retryAfterMillis: Long
-    )
+    data class ConsumeResult(val allowed: Boolean, val retryAfterMillis: Long)
 
     companion object {
+        private const val MAX_BURST_BYTES = 10L * 1024L * 1024L
+
         private fun defaultCapacity(rate: Long): Long =
-            if (rate <= 0L) 1L else rate.coerceAtMost(10L * 1024L * 1024L)
+            if (rate <= 0L) 1L else rate.coerceAtMost(MAX_BURST_BYTES)
+
+        private fun normalizedCapacity(rate: Long, requested: Long): Long =
+            if (rate <= 0L) 1L else requested.coerceIn(1L, rate.coerceAtMost(MAX_BURST_BYTES))
     }
 }
