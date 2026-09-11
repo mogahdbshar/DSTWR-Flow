@@ -176,7 +176,7 @@ class FlowVpnService : VpnService() {
         val output = FileOutputStream(interfaceFd.fileDescriptor)
         val identityResolver = ConnectionOwnerUidResolver(applicationContext, trafficPolicies)
         val decisionEngine = PacketDecisionEngine(ConnectionTracker(), speedLimits, trafficMeter, identityResolver, trafficPolicies)
-        val transport = UserSpaceForwardingTransport(this, serviceScope) { packet -> output.write(packet); output.flush() }
+        val transport = UserSpaceForwardingTransport(this, serviceScope)
         trafficEngine = TrafficEngine(serviceScope, input, output, transport, decisionEngine).also { it.start() }
     }
 
