@@ -8,37 +8,50 @@ Application ID: `com.dstwr.flow`
 Minimum API: 24
 Target API: 35
 
-## Implemented foundation
+## Product and UI completion
 
-- Android application shell and Material 3 UI.
-- Arabic/English-ready presentation structure and RTL/LTR-aware layout.
-- Installed launchable application inventory.
-- Persistent application policies.
-- Block rules, network scope, schedules and quotas.
-- Daily/monthly usage evaluation.
-- Wi-Fi/mobile usage accounting through NetworkStatsManager.
-- Usage history snapshots and statistics models.
-- Quota warning/reached notifications.
-- Explicit VPN consent handling.
-- Foreground VPN service lifecycle.
-- Reboot restoration safeguards.
-- Physical-network detection that ignores the app's own VPN transport.
-- IPv4 and IPv6 packet parsing foundation.
-- Five-tuple flow identity.
-- Bounded flow table with reverse-flow lookup and expiry.
-- Packet decision and traffic-metering foundation.
-- Upload/download token-bucket primitives.
+- Branded DSTWR Flow identity.
+- Dedicated vector application logo used by the launcher and service notification.
+- AndroidX SplashScreen integration for a consistent startup experience across supported Android versions.
+- Material 3 design system with refined light/dark palettes, typography and system-theme detection.
+- Dashboard, application management, statistics and settings surfaces.
+- App search, filtering and per-app policy editor.
+- Wi-Fi/mobile policy scope.
+- Daily/monthly quotas and schedules, including overnight schedules.
+- Usage access, VPN consent and notification permission flows surfaced explicitly in settings.
+- Diagnostics and privacy information.
+
+## Network engine
+
+- Android VpnService/TUN packet path.
+- Defensive IPv4 and IPv6 parsing.
+- IPv4/IPv6 TCP and UDP packet construction with checksums.
+- Bounded five-tuple flow table with reverse lookup and expiry.
+- Android 10+ connection-owner UID resolution when the framework exposes the mapping.
+- Trusted flow identity caching for reverse traffic instead of guessing application identity from packet contents.
 - Runtime traffic policy registry.
-- Defensive validation and unit-test coverage for core policy/traffic primitives.
-- Manual-only GitHub Actions build workflow.
+- Upload/download token-bucket control path.
+- Local user-space TCP bridge using protected Java sockets.
+- Local user-space UDP bridge using protected DatagramSockets.
+- Response packet queue with an idle-safe blocking read so the forwarding engine does not shut down simply because traffic is temporarily quiet.
+- Protected upstream sockets using `VpnService.protect()` to prevent recursive VPN capture.
+- Integration of the transport with `FlowVpnService` and `TrafficEngine`.
 
-## Deliberate capability boundary
+## Performance model
 
-Android VpnService exposes a TUN interface, but it does not provide a complete transparent IP forwarding stack. A production transparent forwarding engine must terminate/reconstruct TCP and UDP flows, maintain NAT/state, handle checksums, route replies, manage DNS behavior and handle IPv4/IPv6 edge cases.
+- Physical-network changes use ConnectivityManager callbacks instead of continuous high-frequency polling.
+- Quota maintenance uses a low-frequency interval.
+- Packet handling is event-driven around the TUN descriptor and blocking sockets.
+- No cloud telemetry or remote traffic forwarding.
+- No Go, NDK, native tunnel binary or external VPN server.
 
-The repository therefore does not pretend that the current packet pump is a complete Internet forwarding implementation. The current VPN enforcement path is suitable for selective blocking by routing selected applications into a local non-forwarding tunnel. Unblocked applications are intentionally kept outside that tunnel.
+## Capability boundary
 
-Per-application upload/download speed shaping is represented as a policy and token-bucket capability, but it must not be advertised as enforced until a real forwarding transport is integrated and validated on supported Android versions/devices.
+The forwarding engine is a genuine user-space TCP/UDP forwarding implementation, but it is not a replacement for Android's kernel TCP/IP stack. TCP retransmission/congestion behavior, unusual options, captive portals, IPv6 extension cases, QUIC-heavy applications, OEM networking differences and long-lived connections still require real-device interoperability testing.
+
+Android versions below API 29 do not expose the same connection-owner UID API, so exact per-app packet attribution cannot be guaranteed for every intercepted flow on those versions.
+
+The speed limiter is wired into the forwarding decision loop and retries throttled packets until the token bucket permits forwarding. Its real-world accuracy still requires device testing under sustained traffic.
 
 ## Security and privacy rules
 
@@ -48,31 +61,37 @@ Per-application upload/download speed shaping is represented as a policy and tok
 - Android permission/consent boundaries are explicit.
 - The app must never guess an application's identity from a packet.
 - Unsupported traffic-control capabilities must remain visibly unsupported instead of silently failing.
+- Upstream forwarding sockets must remain protected from the VPN interface.
 
 ## Build policy
 
 GitHub Actions is manual-only. No automatic workflow trigger is configured.
 
-A final build must be run manually after the implementation batch is complete. Build success is a validation step, not a substitute for real-device testing.
+The implementation batch is complete before the final build. The build is a validation step and is intentionally not triggered automatically.
 
 ## Required real-device acceptance tests
 
-1. VPN consent and cancellation.
-2. Enable/disable protection.
-3. Block one launchable application on Wi-Fi.
-4. Block one launchable application on mobile data.
-5. Switch Wi-Fi/mobile while protection is active.
-6. Emergency block.
-7. Reboot restoration with and without VPN consent.
-8. Usage access granted/revoked.
-9. Notification permission granted/revoked on Android 13+.
-10. Daily/monthly quota warning and enforcement.
-11. Schedule activation/deactivation, including overnight schedules.
-12. IPv4 traffic.
-13. IPv6 traffic on devices/networks where IPv6 is available.
-14. Battery and memory behavior during long-running protection.
-15. Verify that unblocked applications retain Internet access while blocked applications are isolated.
+1. APK compilation and unit tests.
+2. VPN consent and cancellation.
+3. Enable/disable protection.
+4. One-app blocking on Wi-Fi.
+5. One-app blocking on mobile data.
+6. Wi-Fi/mobile transition while protection is active.
+7. Emergency block.
+8. Reboot restoration with and without VPN consent.
+9. Usage access granted/revoked.
+10. Notification permission on Android 13+.
+11. Daily/monthly quota warning and enforcement.
+12. Schedule activation/deactivation, including overnight schedules.
+13. IPv4 TCP browsing and HTTPS.
+14. IPv4 UDP and DNS.
+15. IPv6 TCP/UDP where the network provides IPv6.
+16. Sustained upload and download speed-limit behavior.
+17. Verify unblocked applications retain Internet access while blocked applications are isolated.
+18. Long-running battery, memory and thermal behavior.
+19. Recovery after network disconnect/reconnect.
+20. Recovery after stopping and restarting protection.
 
 ## Final truth statement
 
-A repository build can validate compilation and tests, but it cannot prove transparent packet forwarding, per-app identity attribution, speed shaping or every Android OEM behavior. Those capabilities require an actual forwarding implementation plus device-level acceptance tests.
+The repository now contains the real forwarding transport and the complete product wiring needed for device validation. A repository build can prove compilation/tests, but only real-device acceptance can prove transparent forwarding behavior, per-app attribution, speed accuracy and compatibility across Android/OEM/network combinations.
