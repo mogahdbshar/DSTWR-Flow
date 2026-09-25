@@ -19,13 +19,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.io.FileInputStream
-import java.io.FileOutputStream
 
 /** Local VPN lifecycle and real user-space traffic enforcement controller. */
 class FlowVpnService : VpnService() {
     private var vpnInterface: ParcelFileDescriptor? = null
-    private var trafficEngine: TrafficEngine? = null
+    private var productionBridge: ProductionNetstackBridge? = null
     private var applyJob: Job? = null
     private var monitorJob: Job? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -71,7 +69,7 @@ class FlowVpnService : VpnService() {
     override fun onDestroy() {
         applyJob?.cancel(); applyJob = null
         monitorJob?.cancel(); monitorJob = null
-        stopTrafficEngine()
+        stopProductionBridge()
         closeVpnInterface()
         warnedQuotaKeys.clear(); reachedQuotaKeys.clear()
         serviceScope.cancel()
@@ -138,12 +136,12 @@ class FlowVpnService : VpnService() {
                 lastNetworkType = networkType
                 trafficPolicies.clear()
                 speedLimits.clear()
-                stopTrafficEngine()
+                stopProductionBridge()
                 stopVpnInterfaceOnly()
                 return
             }
 
-            stopTrafficEngine()
+            stopProductionBridge()
             closeVpnInterface()
             trafficPolicies.replaceAll(policyEngine.trafficPolicies(emergencyBlock, networkType))
             trafficPolicies.setGlobalBlocked(emergencyBlock)
@@ -160,7 +158,7 @@ class FlowVpnService : VpnService() {
             lastManagedPackages = managedPackages
             lastEmergencyBlock = emergencyBlock
             lastNetworkType = networkType
-            startTrafficEngine(established)
+            startProductionBridge(established)
         } catch (_: SecurityException) {
             stopVpn()
         } catch (_: IllegalStateException) {
@@ -170,17 +168,21 @@ class FlowVpnService : VpnService() {
         }
     }
 
-    private fun startTrafficEngine(interfaceFd: ParcelFileDescriptor) {
-        stopTrafficEngine()
-        val input = FileInputStream(interfaceFd.fileDescriptor)
-        val output = FileOutputStream(interfaceFd.fileDescriptor)
-        val identityResolver = ConnectionOwnerUidResolver(applicationContext, trafficPolicies)
-        val decisionEngine = PacketDecisionEngine(ConnectionTracker(), speedLimits, trafficMeter, identityResolver, trafficPolicies)
-        val transport = UserSpaceForwardingTransport(this, serviceScope)
-        trafficEngine = TrafficEngine(serviceScope, input, output, transport, decisionEngine).also { it.start() }
+    private fun startProductionBridge(interfaceFd: ParcelFileDescriptor) {
+        stopProductionBridge()
+        val tunFd = interfaceFd.detachFd()
+        vpnInterface = null
+        try {
+            productionBridge = ProductionNetstackBridge(this, serviceScope, trafficPolicies, speedLimits).also {
+                it.start(tunFd)
+            }
+        } catch (t: Throwable) {
+            runCatching { android.system.Os.close(tunFd) }
+            throw t
+        }
     }
 
-    private fun stopTrafficEngine() {
+    private fun stopProductionBridge() {
         trafficEngine?.stop()
         trafficEngine = null
     }
@@ -198,7 +200,7 @@ class FlowVpnService : VpnService() {
         lastManagedPackages = null; lastEmergencyBlock = null; lastNetworkType = null
         warnedQuotaKeys.clear(); reachedQuotaKeys.clear()
         trafficPolicies.clear(); speedLimits.clear()
-        stopTrafficEngine(); closeVpnInterface()
+        stopProductionBridge(); closeVpnInterface()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(STOP_FOREGROUND_REMOVE)
         else { @Suppress("DEPRECATION") stopForeground(true) }
         stopSelf()
