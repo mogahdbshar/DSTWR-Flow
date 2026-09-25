@@ -183,8 +183,8 @@ class FlowVpnService : VpnService() {
     }
 
     private fun stopProductionBridge() {
-        trafficEngine?.stop()
-        trafficEngine = null
+        productionBridge?.stop()
+        productionBridge = null
     }
 
     private fun stopVpnInterfaceOnly() = closeVpnInterface()
