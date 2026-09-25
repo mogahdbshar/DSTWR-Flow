@@ -43,6 +43,7 @@ android {
 }
 
 dependencies {
+    implementation(files("libs/netstack.aar"))
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
     implementation(composeBom)
     androidTestImplementation(composeBom)
