@@ -33,13 +33,14 @@ TARGETS="${1:-arm64}"   # 'arm64' (default, real devices) or 'all' (adds amd64/x
 echo "==> Toolchain"
 command -v go >/dev/null || { echo "Go not found. Install Go (GOTOOLCHAIN=auto will fetch the right version)."; exit 1; }
 SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
 if [[ -z "${ANDROID_NDK_HOME:-}" || ! -f "${ANDROID_NDK_HOME}/meta/platforms.json" ]]; then
   if [[ -n "$SDK_ROOT" ]]; then
     candidate="$SDK_ROOT/ndk/${ANDROID_NDK_VERSION:-27.2.12479018}"
     if [[ -f "$candidate/meta/platforms.json" ]]; then
       export ANDROID_NDK_HOME="$candidate"
     else
-      found="$(find "$SDK_ROOT/ndk" -maxdepth 3 -type f -path '*/meta/platforms.json' -print -quit 2>/dev/null || true)"
+      found="$(find "$SDK_ROOT/ndk" -maxdepth 3 -type f -path "*/meta/platforms.json" -print -quit 2>/dev/null || true)"
       if [[ -n "$found" ]]; then
         export ANDROID_NDK_HOME="$(dirname "$(dirname "$found")")"
       fi
