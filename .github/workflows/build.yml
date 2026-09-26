@@ -24,7 +24,7 @@ jobs:
       - name: Set up Go 1.25
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25.x'
+          go-version: '1.26.x'
           cache-dependency-path: netstack/go.sum
       - name: Install Android SDK packages
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true && "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;${ANDROID_NDK_VERSION}"
