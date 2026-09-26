@@ -32,7 +32,19 @@ TARGETS="${1:-arm64}"   # 'arm64' (default, real devices) or 'all' (adds amd64/x
 
 echo "==> Toolchain"
 command -v go >/dev/null || { echo "Go not found. Install Go (GOTOOLCHAIN=auto will fetch the right version)."; exit 1; }
-: "${ANDROID_NDK_HOME:?Set ANDROID_NDK_HOME to your Android NDK path}"
+if [[ -z "\${ANDROID_NDK_HOME:-}" || ! -f "\$ANDROID_NDK_HOME/meta/platforms.json" ]]; then
+  if [[ -n "\${ANDROID_HOME:-}" && -f "\$ANDROID_HOME/ndk/\${ANDROID_NDK_VERSION:-27.2.12479018}/meta/platforms.json" ]]; then
+    export ANDROID_NDK_HOME="\$ANDROID_HOME/ndk/\${ANDROID_NDK_VERSION:-27.2.12479018}"
+  elif [[ -n "\${ANDROID_SDK_ROOT:-}" && -f "\$ANDROID_SDK_ROOT/ndk/\${ANDROID_NDK_VERSION:-27.2.12479018}/meta/platforms.json" ]]; then
+    export ANDROID_NDK_HOME="\$ANDROID_SDK_ROOT/ndk/\${ANDROID_NDK_VERSION:-27.2.12479018}"
+  else
+    echo "ERROR: Android NDK not found or invalid."
+    exit 1
+  fi
+fi
+export ANDROID_NDK_HOME
+echo "ANDROID_NDK_HOME=\$ANDROID_NDK_HOME"
+test -f "\$ANDROID_NDK_HOME/meta/platforms.json"
 export GOTOOLCHAIN="${GOTOOLCHAIN:-auto}"
 go version
 
@@ -42,14 +54,11 @@ go mod tidy
 echo "==> Compile check (host arch, no cgo) before binding"
 GOFLAGS=-mod=mod go build ./...
 
-echo "==> Register gomobile/gobind as Go 1.26 tools"
-go get -tool golang.org/x/mobile/cmd/gomobile@v0.0.0-20260908204917-8b95e45f8d3e
-go get -tool golang.org/x/mobile/cmd/gobind@v0.0.0-20260908204917-8b95e45f8d3e
+echo "==> Verify declared gomobile/gobind tools"
 go mod tidy
 
-echo "==> Install gomobile + gobind binaries"
-go install golang.org/x/mobile/cmd/gomobile
-go install golang.org/x/mobile/cmd/gobind
+echo "==> Install declared gomobile + gobind tools"
+go install tool
 export PATH="$(go env GOPATH)/bin:$PATH"
 
 case "$TARGETS" in
