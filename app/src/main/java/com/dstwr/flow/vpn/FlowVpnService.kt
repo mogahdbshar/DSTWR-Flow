@@ -177,7 +177,7 @@ class FlowVpnService : VpnService() {
                 it.start(tunFd)
             }
         } catch (t: Throwable) {
-            runCatching { android.system.Os.close(tunFd) }
+            runCatching { ParcelFileDescriptor.adoptFd(tunFd).close() }
             throw t
         }
     }
