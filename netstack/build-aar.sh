@@ -42,9 +42,14 @@ go mod tidy
 echo "==> Compile check (host arch, no cgo) before binding"
 GOFLAGS=-mod=mod go build ./...
 
-echo "==> Install gomobile + gobind"
-go install golang.org/x/mobile/cmd/gomobile@latest
-go install golang.org/x/mobile/cmd/gobind@latest
+echo "==> Register gomobile/gobind as Go 1.26 tools"
+go get -tool golang.org/x/mobile/cmd/gomobile@v0.0.0-20260908204917-8b95e45f8d3e
+go get -tool golang.org/x/mobile/cmd/gobind@v0.0.0-20260908204917-8b95e45f8d3e
+go mod tidy
+
+echo "==> Install gomobile + gobind binaries"
+go install golang.org/x/mobile/cmd/gomobile
+go install golang.org/x/mobile/cmd/gobind
 export PATH="$(go env GOPATH)/bin:$PATH"
 
 case "$TARGETS" in
