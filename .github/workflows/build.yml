@@ -27,9 +27,9 @@ jobs:
           go-version: '1.25.x'
           cache-dependency-path: netstack/go.sum
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-      - name: Install Android NDK
-        run: sdkmanager "ndk;${ANDROID_NDK_VERSION}"
+        # removed: obsolete setup-android action
+      - name: Install Android SDK packages
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true && "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;${ANDROID_NDK_VERSION}"
       - name: Build production gVisor netstack AAR
         env:
           ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.ANDROID_NDK_VERSION }}
