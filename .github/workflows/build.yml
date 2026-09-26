@@ -28,12 +28,16 @@ jobs:
           cache-dependency-path: netstack/go.sum
       - name: Install Android SDK packages
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true && "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;${ANDROID_NDK_VERSION}"
+      - name: Verify Android NDK
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/${ANDROID_NDK_VERSION}"
+          test -f "$ANDROID_NDK_HOME/meta/platforms.json"
+          echo "Using Android NDK: $ANDROID_NDK_HOME"
       - name: Build production gVisor netstack AAR
         env:
           GOTOOLCHAIN: auto
         run: |
-          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION"
-          test -f "$ANDROID_NDK_HOME/meta/platforms.json"
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/${ANDROID_NDK_VERSION}"
           cd netstack
           bash build-aar.sh arm64
       - name: Set up Gradle
